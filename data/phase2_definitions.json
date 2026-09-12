@@ -1,0 +1,131 @@
+{
+  "survival_config": {
+    "hunger_depletion_per_tick": 1.0,
+    "thirst_depletion_per_tick": 1.4,
+    "stamina_recovery_per_tick": 5.0,
+    "starvation_threshold": 95.0,
+    "dehydration_threshold": 95.0,
+    "starvation_damage_per_tick": 5.0,
+    "dehydration_damage_per_tick": 8.0,
+    "zombie_hunger_depletion_per_tick": 1.2,
+    "zombie_starvation_threshold": 95.0,
+    "zombie_starvation_damage_per_tick": 6.0,
+    "zombie_sleep_heal_per_tick": 4.0,
+    "food_degrade_per_tick": 1.0
+  },
+  "items": [
+    {"item_id": "water_bottle", "name": "Water Bottle", "category": "water", "max_stack": 5, "weight": 0.5},
+    {"item_id": "canned_food", "name": "Canned Food", "category": "food", "max_stack": 5, "weight": 0.6},
+    {"item_id": "cooked_meat", "name": "Cooked Meat", "category": "food", "max_stack": 6, "weight": 0.7},
+    {"item_id": "scrap_metal", "name": "Scrap Metal", "category": "crafting", "max_stack": 20, "weight": 0.2},
+    {"item_id": "wood_log", "name": "Wood Log", "category": "crafting", "max_stack": 15, "weight": 0.6},
+    {"item_id": "metal_plate", "name": "Metal Plate", "category": "crafting", "max_stack": 10, "weight": 0.8},
+    {"item_id": "seed_potato", "name": "Potato Seed", "category": "crafting", "max_stack": 20, "weight": 0.05},
+    {"item_id": "harvest_potato", "name": "Potato", "category": "food", "max_stack": 20, "weight": 0.2},
+    {"item_id": "ammo_9mm", "name": "9mm Ammo", "category": "ammo", "max_stack": 30, "weight": 0.02},
+    {"item_id": "med_kit", "name": "Medical Kit", "category": "medical", "max_stack": 3, "weight": 1.0},
+    {"item_id": "antiviral_serum", "name": "Antiviral Serum", "category": "medical", "max_stack": 2, "weight": 0.5},
+    {"item_id": "pistol_9mm", "name": "9mm Pistol", "category": "weapon", "max_stack": 1, "weight": 1.2},
+    {"item_id": "jacket_armor", "name": "Reinforced Jacket", "category": "clothing", "max_stack": 1, "weight": 2.5}
+  ],
+  "food": [
+    {"item_id": "canned_food", "hunger_restore": 25.0, "health_restore": 1.0},
+    {"item_id": "cooked_meat", "hunger_restore": 35.0, "health_restore": 3.0},
+    {"item_id": "harvest_potato", "hunger_restore": 12.0, "health_restore": 0.0}
+  ],
+  "medicine": [
+    {"item_id": "med_kit", "health_restore": 28.0, "zombie_sanity_delta": -3.0, "cure_progress_delta": 0.0},
+    {"item_id": "antiviral_serum", "health_restore": 10.0, "zombie_sanity_delta": -18.0, "cure_progress_delta": 0.45}
+  ],
+  "weapons": [
+    {"weapon_id": "pistol_9mm", "damage": 22.0, "stamina_cost": 4.0, "durability_loss": 6.0, "ammo_per_attack": 1}
+  ],
+  "armor": [
+    {"armor_id": "jacket_armor", "mitigation": 0.35, "durability_loss_factor": 0.15}
+  ],
+  "loot_tiers": [
+    {"tier_id": "tier_1", "weight": 1.0, "eligible_loot_pool_ids": ["pool_tier_1"], "eligible_categories": ["food", "crafting"], "eligible_quality_levels": ["common"]},
+    {"tier_id": "tier_2", "weight": 1.0, "eligible_loot_pool_ids": ["pool_tier_2"], "eligible_categories": ["weapon", "armor", "medical"], "eligible_quality_levels": ["common", "uncommon"]},
+    {"tier_id": "tier_3", "weight": 1.0, "eligible_loot_pool_ids": ["pool_tier_3"], "eligible_categories": ["blueprint", "cosmetic"], "eligible_quality_levels": ["rare"]}
+  ],
+  "recipes": [
+    {
+      "recipe_id": "recipe_metal_plate",
+      "recipe_tags": ["general", "crafting"],
+      "input_item_quantities": {"scrap_metal": 2},
+      "output_item_quantities": {"metal_plate": 1},
+      "required_workbench_id": "wb_general"
+    },
+    {
+      "recipe_id": "recipe_jacket_armor",
+      "recipe_tags": ["armor"],
+      "input_item_quantities": {"metal_plate": 2, "wood_log": 1},
+      "output_item_quantities": {"jacket_armor": 1},
+      "required_workbench_id": "wb_armor"
+    }
+  ],
+  "workbenches": [
+    {"workbench_id": "wb_general", "supported_recipe_tags": ["general", "crafting", "food"], "power_required": false},
+    {"workbench_id": "wb_armor", "supported_recipe_tags": ["armor"], "power_required": true}
+  ],
+  "resource_nodes": [
+    {"node_type": "scrap_pile", "yields_item_id": "scrap_metal", "yield_per_gather": 2, "respawn_ticks": 3},
+    {"node_type": "wood_stump", "yields_item_id": "wood_log", "yield_per_gather": 2, "respawn_ticks": 2}
+  ],
+  "crops": [
+    {"crop_id": "potato", "seed_item_id": "seed_potato", "harvest_item_id": "harvest_potato", "growth_ticks_required": 2, "water_per_tick": 5.0}
+  ],
+  "structures": [
+    {"blueprint_id": "bp_wood_wall", "required_materials": {"wood_log": 2, "metal_plate": 1}, "max_health": 150.0, "build_tags": ["fortification"]}
+  ],
+  "animals": [
+    {"species_id": "wolf", "habitat": "land", "max_health": 80.0, "tame_difficulty": 0.5, "base_ability_ids": ["wolf_scavenge"]},
+    {"species_id": "dolphin", "habitat": "water", "max_health": 90.0, "tame_difficulty": 0.4, "base_ability_ids": ["dolphin_harvest"]},
+    {"species_id": "infected_hound", "habitat": "land", "max_health": 95.0, "tame_difficulty": 0.6, "base_ability_ids": ["hound_breach"]}
+  ],
+  "animal_abilities": [
+    {"ability_id": "wolf_scavenge", "domain": "resource_gathering", "modifiers": {"yield_bonus": 0.25}},
+    {"ability_id": "dolphin_harvest", "domain": "gardening", "modifiers": {"harvest_bonus": 0.3, "plant_health_bonus": 10.0}},
+    {"ability_id": "hound_breach", "domain": "building", "modifiers": {"build_credit_bonus": 3.0}},
+    {"ability_id": "hound_frenzy", "domain": "combat", "modifiers": {"stamina_recovery": 10.0}},
+    {"ability_id": "hound_crafter", "domain": "crafting", "modifiers": {"craft_credit_bonus": 2.0}}
+  ],
+  "power_sources": [
+    {"source_id": "generator_small", "generation": 20.0}
+  ],
+  "powered_devices": [
+    {"device_id": "fabricator", "consumption": 15.0}
+  ],
+  "zombie_tiers": [
+    {"tier_id": "z_tier_1", "display_name": "Ravenous", "sanity_drain_rate": 0.2, "feeding_efficiency": 1.0},
+    {"tier_id": "z_tier_2", "display_name": "Carrion Lord", "sanity_drain_rate": 0.15, "feeding_efficiency": 1.2}
+  ],
+  "zombie_sanity_bands": [
+    {"band_id": "feral", "minimum": 0.0, "maximum": 30.0, "human_coexistence_allowed": false, "hostility_level": 1.0, "cure_eligible": false, "mission_availability_tags": ["predation"], "behavior_tags": ["attack_on_sight"]},
+    {"band_id": "volatile", "minimum": 30.0, "maximum": 70.0, "human_coexistence_allowed": false, "hostility_level": 0.6, "cure_eligible": false, "mission_availability_tags": ["feed"], "behavior_tags": ["aggressive"]},
+    {"band_id": "controlled", "minimum": 70.0, "maximum": 100.0, "human_coexistence_allowed": true, "hostility_level": 0.2, "cure_eligible": true, "mission_availability_tags": ["feed", "coexist"], "behavior_tags": ["restrained"]}
+  ],
+  "missions": [
+    {"mission_id": "mission_human_retrieve_item", "audience": "human", "objective_ids": ["reach_building_a", "retrieve_water_bottle"], "reward_id": "reward_human_t1"},
+    {"mission_id": "mission_zombie_feed_target", "audience": "zombie", "objective_ids": ["feed_once"], "reward_id": "reward_zombie_t1"},
+    {"mission_id": "mission_human_gather_resources", "audience": "human", "objective_ids": ["gather_once"], "reward_id": "reward_gather"},
+    {"mission_id": "mission_human_craft_weapon", "audience": "human", "objective_ids": ["craft_item"], "reward_id": "reward_craft"},
+    {"mission_id": "mission_human_survive_cycle", "audience": "human", "objective_ids": ["consume_food", "build_structure"], "reward_id": "reward_survival"},
+    {"mission_id": "mission_zombie_destroy_structure", "audience": "zombie", "objective_ids": ["destroy_once"], "reward_id": "reward_destruction"}
+  ],
+  "progression": {
+    "levels": [
+      {"level": 1, "xp_required": 0},
+      {"level": 2, "xp_required": 100},
+      {"level": 3, "xp_required": 250}
+    ],
+    "zombie_tier_thresholds": {
+      "z_tier_1": 1,
+      "z_tier_2": 3
+    }
+  },
+  "economy": {
+    "currency_id": "credits",
+    "starting_balance": 50
+  }
+}

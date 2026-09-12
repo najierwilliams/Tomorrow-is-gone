@@ -42,6 +42,17 @@ Implementation level in this phase:
 - Added phase documentation: `docs/PHASE_1_6_AUTHORITATIVE_MULTIPLAYER_SLICE.md`
 - Validated authoritative command-intent flow, chunk interest management, tiered loot, partitioned persistence, missions, and combat replication
 
+### Phase 2 — Core Gameplay Runtime Expansion (Implemented)
+Phase 2 extends the Phase 1.6 runtime into an authoritative survival simulation while preserving engine-independent boundaries.
+
+Implementation level in this phase:
+- Expanded authoritative runtime models for human survival, zombie survival, inventory/equipment, crafting/workbenches, gathering, gardening, construction, destruction, infection, animals/taming, hordes, progression, missions, economy, and power abstraction
+- Added data-driven Phase 2 definition loading from `data/phase2_definitions.json`
+- Expanded persistence partitions for new gameplay domains (equipment/progression/economy/missions/world entities)
+- Expanded chunk-aware authoritative snapshots for inventory/equipment, animals, structures, resources, gardens, power, economy, missions, and NPC foundation records
+- Expanded deterministic test world with representative entities for core gameplay systems
+- Added comprehensive Phase 2 runtime tests in `tests/test_phase2_core_gameplay_runtime.py`
+
 ## Phase 1.5 Layering Model
 
 - **Engine-independent contracts (now):**
@@ -102,7 +113,7 @@ Unity remains an integration shell around engine-independent rules:
 
 ## Recommended Next Phase
 
-**Phase 2 — Core Gameplay Runtime Expansion**
-- Expand gameplay depth on top of the validated authoritative runtime slice.
+**Phase 3 — AI and Encounter Expansion**
+- Expand advanced zombie/NPC behaviors on top of persisted authoritative entities.
 - Continue PS5-first runtime progression while preserving server-authoritative boundaries.
 - Stage production networking/platform concerns for later phases.
