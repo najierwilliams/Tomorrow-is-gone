@@ -44,20 +44,25 @@
   - Added biome/POI/spawn/environment/season/weather/underwater data contracts and definitions
   - Extended authoritative runtime + Unity adapter projection for chunk metadata and environment state
 
-- **Phase 5 — Combat and Equipment Runtime**
-  - Implement modular combat resolution, durability interactions, and balancing
+- **Phase 5 — Final Core Systems & Unity Integration Preparation (Implemented)**
+  - Finalized authoritative contracts for vehicles, world time/day-night, respawn, and event streaming
+  - Added Phase 5 data definitions, schema-oriented validation, and custom-content/real-world provider abstractions
+  - Extended replication + Unity adapter projection boundaries and authoritative client-intent hardening
 
-- **Phase 6 — World and Content Scale-Out**
+- **Phase 6 — Unity Integration**
+  - Build Unity presentation and interaction layers against finalized authoritative contracts
+
+- **Phase 7 — World and Content Scale-Out**
   - Expand city/region content density and mission/world-event depth
 
-- **Phase 7 — Unity Multiplayer Integration**
+- **Phase 8 — Unity Multiplayer Integration**
   - Productionize Unity-side adapters, transport, prediction/interpolation, and content streaming
 
-- **Phase 8 — Playable Alpha**
+- **Phase 9 — Playable Alpha**
   - Stable multiplayer vertical slice with persistence and progression
 
-- **Phase 9 — Public Early Build**
+- **Phase 10 — Public Early Build**
   - External testing, balancing passes, and iterative systems hardening
 
-- **Phase 10 — Live Expansion**
+- **Phase 11 — Live Expansion**
   - Content growth, optimization, and post-launch systems evolution

@@ -80,6 +80,19 @@ Implementation level in this phase:
 - Extended runtime and Unity adapter snapshots with chunk metadata and environment-state projection
 - Added focused Phase 4 tests in `tests/test_phase4_world_streaming_environment.py`
 
+### Phase 5 — Final Core Systems & Unity Integration Preparation (Implemented)
+Phase 5 finalizes the core server-authoritative foundation required before Unity implementation.
+
+Implementation level in this phase:
+- Added Phase 5 data contracts and loader in `prototypes/core/phase5_contracts.py` and `data/phase5_definitions.json`
+- Added replaceable real-world city/building/road/POI provider abstractions without external dataset dependency
+- Extended authoritative runtime with vehicle ownership/enter/exit/move intent contracts and vehicle persistence/replication
+- Added authoritative respawn contracts and deterministic world-time/day-night runtime state
+- Added authoritative event stream projection and explicit rejection paths for forged client world/event/mission mutations
+- Extended Unity adapter projection for vehicles, world time, event stream, and allowed client intents
+- Added definition validation for Phase 1/2/3/4/5 data files in `prototypes/core/phase5_validation.py`
+- Added focused Phase 5 coverage in `tests/test_phase5_final_core_systems_unity_preparation.py`
+
 ## Phase 1.5 Layering Model
 
 - **Engine-independent contracts (now):**
@@ -140,7 +153,6 @@ Unity remains an integration shell around engine-independent rules:
 
 ## Recommended Next Phase
 
-**Phase 5 — Combat and Equipment Runtime**
-- Expand modular combat depth and equipment balancing over the world + encounter layers.
-- Continue PS5-first runtime progression while preserving server-authoritative boundaries.
-- Stage production networking/platform concerns for later phases.
+**Unity Integration**
+- Implement Unity-side visual, animation, UI, audio, and physics presentation over the finalized authoritative core contracts.
+- Keep command-intent boundaries and authority ownership unchanged while replacing placeholder projections with production Unity systems.

@@ -5,7 +5,7 @@ A modular zombie survival/horror game foundation intended for future Unity devel
 PlayStation 5 is the exclusive target platform for all future architecture and runtime implementation.
 
 ## Current Development Phase
-**Phase 4 (implemented) — World, Streaming & Environment**
+**Phase 5 (implemented) — Final Core Systems & Unity Integration Preparation**
 
 This repository now contains:
 - Implemented Phase 1 core prototypes
@@ -14,6 +14,7 @@ This repository now contains:
 - Implemented Phase 2 core gameplay runtime expansion systems
 - Implemented Phase 3 server-authoritative AI/navigation/perception/encounter expansion systems
 - Implemented Phase 4 engine-independent world/streaming/environment foundation with deterministic chunk generation and data-driven world definitions
+- Implemented Phase 5 core completion layer for vehicles, world time/day-night, authoritative event stream, expanded persistence/replication contracts, Phase 5 data validation, and Unity integration intent boundaries
 - Documentation for engine-independent boundaries and future Unity integration
 - PS5-focused architecture constraints for large persistent multiplayer worlds
 
@@ -69,6 +70,10 @@ This repository now contains:
 - Human NPC encounter behavior foundation (threat detection, flee/combat response, investigation/wander)
 - Chunk-aware AI evaluation and persisted NPC AI memory/state with Unity adapter projection support
 - Chunk lifecycle/environment metadata projection through authoritative replication and Unity adapter world view
+- Vehicle ownership/enter/exit/movement intent contracts with authoritative persistence + replication
+- Authoritative death/respawn contracts and world-time/day-night runtime hooks
+- Replaceable real-world city/building/road/POI provider protocols without external dataset dependency
+- Authoritative event stream projection for Unity consumers and security-gated client intent boundaries
 
 See:
 - `docs/ARCHITECTURE.md`
@@ -77,6 +82,7 @@ See:
 - `docs/PHASE_2_CORE_GAMEPLAY_RUNTIME_EXPANSION.md`
 - `docs/PHASE_3_AI_AND_ENCOUNTER_EXPANSION.md`
 - `docs/PHASE_4_WORLD_STREAMING_AND_ENVIRONMENT.md`
+- `docs/PHASE_5_FINAL_CORE_SYSTEMS_AND_UNITY_PREPARATION.md`
 - `prototypes/core/phase15_contracts.py`
 - `prototypes/core/phase16_authoritative_runtime.py`
 - `prototypes/core/phase4_world.py`
@@ -97,6 +103,6 @@ python -m unittest discover -s tests -p "test_*.py"
 - Future late-phase PC expansion and mod/community platform support
 
 ## Recommended Next Step
-**Phase 5 — Combat and Equipment Runtime**
-- Expand combat depth and balancing over the now-established authoritative world + encounter layer.
-- Continue platform/transport productionization while preserving core engine independence.
+**Unity Integration**
+- Implement Unity-side presentation, scene/entity projection, and UI using the finalized authoritative contracts.
+- Keep gameplay rule authority in server/core logic while adding visual/interaction layers in Unity.

@@ -15,8 +15,12 @@ class UnityAuthoritativeView:
     mission_representation: dict = field(default_factory=dict)
     animal_representation: dict = field(default_factory=dict)
     structure_representation: dict = field(default_factory=dict)
+    vehicle_representation: dict = field(default_factory=dict)
     npc_ai_representation: dict = field(default_factory=dict)
     perception_representation: list[dict] = field(default_factory=list)
+    world_time_representation: dict = field(default_factory=dict)
+    event_representation: list[dict] = field(default_factory=list)
+    allowed_intents: list[str] = field(default_factory=list)
 
 
 class Phase16UnityAdapter(UnityIntegrationPort):
@@ -40,6 +44,7 @@ class Phase16UnityAdapter(UnityIntegrationPort):
                 "position": player.get("position"),
                 "zombie_state": player.get("zombie_state"),
                 "economy": player.get("economy", {}),
+                "dead": player.get("dead"),
             }
             for player in visible_players + [state]
             if "player_id" in player
@@ -55,18 +60,24 @@ class Phase16UnityAdapter(UnityIntegrationPort):
             "power": payload.get("power", {}),
             "hordes": payload.get("hordes", {}),
             "npcs": payload.get("npcs", {}),
+            "vehicles": payload.get("vehicles", {}),
             "perception_events": payload.get("perception_events", []),
+            "world_time": payload.get("world_time", {}),
         }
 
         self.view.inventory_representation = payload.get("inventory", {})
         self.view.mission_representation = payload.get("missions", {})
         self.view.animal_representation = payload.get("animals", {})
         self.view.structure_representation = payload.get("structures", {})
+        self.view.vehicle_representation = payload.get("vehicles", {})
         self.view.npc_ai_representation = {
             npc_id: npc_payload.get("ai_state", {})
             for npc_id, npc_payload in payload.get("npcs", {}).items()
         }
         self.view.perception_representation = list(payload.get("perception_events", []))
+        self.view.world_time_representation = payload.get("world_time", {})
+        self.view.event_representation = list(payload.get("authoritative_events", []))
+        self.view.allowed_intents = list(payload.get("unity_allowed_intents", []))
 
     def pull_input_commands(self) -> list[ClientCommandIntent]:
         intents = list(self._pending_commands)

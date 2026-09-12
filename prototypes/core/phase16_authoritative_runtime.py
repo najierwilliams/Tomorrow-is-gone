@@ -69,6 +69,12 @@ from .phase4_world import (
     WorldPosition,
     load_phase4_world_definitions,
 )
+from .phase5_contracts import (
+    Phase5Definitions,
+    RealWorldProviderRegistry,
+    VehicleDefinition as Phase5VehicleDefinition,
+    load_phase5_definitions,
+)
 from .player import PlayerStats
 
 
@@ -342,6 +348,29 @@ class NpcRuntime:
     sensory_memory: dict[str, PerceptionMemory] = field(default_factory=dict)
 
 
+@dataclass
+class VehicleRuntime:
+    vehicle_id: str
+    definition_id: str
+    owner_player_id: str
+    coordinate: WorldCoordinate
+    orientation_yaw: float
+    durability: float
+    fuel: float
+    passenger_player_ids: list[str] = field(default_factory=list)
+    chunk_key: str = ""
+    persistence_class: str = "persistent"
+
+
+@dataclass
+class WorldTimeRuntime:
+    tick: int = 0
+    day_index: int = 0
+    tick_of_day: int = 0
+    day_night_state: str = "day"
+    elapsed_ticks: int = 0
+
+
 @dataclass(frozen=True)
 class EncounterRuntimeEvent:
     event_type: str
@@ -379,6 +408,7 @@ class WorldRuntimeState:
     animals: dict[str, AnimalRuntime] = field(default_factory=dict)
     hordes: dict[str, HordeRuntime] = field(default_factory=dict)
     npcs: dict[str, NpcRuntime] = field(default_factory=dict)
+    vehicles: dict[str, VehicleRuntime] = field(default_factory=dict)
 
 
 class InProcessTransport:
@@ -496,9 +526,13 @@ class AuthoritativeServerRuntime:
         self.loot_generator = loot_generator
         self.data_root = data_root or Path(__file__).resolve().parents[2] / "data"
         self.phase4_definitions = None
+        self.phase5_definitions: Phase5Definitions | None = None
         phase4_path = self.data_root / "phase4_world_definitions.json"
         if phase4_path.exists():
             self.phase4_definitions = load_phase4_world_definitions(phase4_path)
+        phase5_path = self.data_root / "phase5_definitions.json"
+        if phase5_path.exists():
+            self.phase5_definitions = load_phase5_definitions(phase5_path)
 
         default_grid = WorldGridConfig(
             chunk_size_meters=64,
@@ -568,6 +602,31 @@ class AuthoritativeServerRuntime:
             max_players=16,
             rule_set=ServerRuleSet(custom_rules={"friendly_fire": False}),
         )
+        if self.phase5_definitions is not None:
+            self.server_configuration = ServerConfiguration(
+                server_id=self.server_configuration.server_id,
+                map_id=self.server_configuration.map_id,
+                region_id=self.server_configuration.region_id,
+                is_public=self.server_configuration.is_public,
+                creative_mode_enabled=self.server_configuration.creative_mode_enabled,
+                max_players=self.server_configuration.max_players,
+                rule_set=ServerRuleSet(
+                    custom_rules={
+                        "friendly_fire": self.phase5_definitions.server_rules.pvp_enabled,
+                        "pve_enabled": self.phase5_definitions.server_rules.pve_enabled,
+                        "creative_mode_private_only": self.phase5_definitions.server_rules.creative_mode_private_only,
+                    },
+                    custom_difficulty={
+                        "zombie_difficulty_multiplier": self.phase5_definitions.server_rules.zombie_difficulty_multiplier,
+                        "hunger_thirst_multiplier": self.phase5_definitions.server_rules.hunger_thirst_multiplier,
+                        "loot_multiplier": self.phase5_definitions.server_rules.loot_multiplier,
+                        "resource_rate_multiplier": self.phase5_definitions.server_rules.resource_rate_multiplier,
+                        "infection_multiplier": self.phase5_definitions.server_rules.infection_multiplier,
+                        "death_penalty_multiplier": self.phase5_definitions.server_rules.death_penalty_multiplier,
+                        "mission_multiplier": self.phase5_definitions.server_rules.mission_multiplier,
+                    },
+                ),
+            )
 
         self.players: dict[str, AuthoritativePlayer] = {}
         self.world = WorldRuntimeState()
@@ -576,6 +635,9 @@ class AuthoritativeServerRuntime:
         self.sound_events: list[SoundEvent] = []
         self.recent_encounter_events: list[EncounterRuntimeEvent] = []
         self.latest_perception_events: list[dict] = []
+        self.authoritative_events: list[dict] = []
+        self.world_time = WorldTimeRuntime()
+        self.real_world_provider_registry = RealWorldProviderRegistry()
         self.allowed_player_sound_events: dict[str, float] = {
             "footstep": 0.25,
             "gunshot": 1.0,
@@ -599,6 +661,7 @@ class AuthoritativeServerRuntime:
         self.animal_ability_definitions: dict[str, AnimalAbilityDefinition] = {}
         self.power_source_definitions: dict[str, PowerSourceDefinition] = {}
         self.power_device_definitions: dict[str, PoweredDeviceDefinition] = {}
+        self.vehicle_definitions: dict[str, Phase5VehicleDefinition] = {}
         self.progression_definition = ProgressionDefinition(levels=[{"level": 1, "xp_required": 0}], zombie_tier_thresholds={})
         self.economy_definition = EconomyDefinition(currency_id="credits", starting_balance=0)
         self.economy_spend_transactions: dict[str, int] = {}
@@ -657,6 +720,7 @@ class AuthoritativeServerRuntime:
 
         self._load_phase2_definitions()
         self._load_phase3_definitions()
+        self._load_phase5_definitions_runtime()
         self._build_test_world()
 
     def _load_phase2_definitions(self) -> None:
@@ -959,6 +1023,11 @@ class AuthoritativeServerRuntime:
             for event_type, strength in payload.get("allowed_player_sound_events", self.allowed_player_sound_events).items()
         }
 
+    def _load_phase5_definitions_runtime(self) -> None:
+        if self.phase5_definitions is None:
+            return
+        self.vehicle_definitions = dict(self.phase5_definitions.vehicles)
+
     def _build_test_world(self) -> None:
         container_defs = [
             LootContainerRuntime(
@@ -1053,6 +1122,28 @@ class AuthoritativeServerRuntime:
             power_group_id="grid_a",
             enabled=True,
         )
+        if "vehicle_car_scout" in self.vehicle_definitions:
+            self.world.vehicles["vehicle_runtime_car_a"] = VehicleRuntime(
+                vehicle_id="vehicle_runtime_car_a",
+                definition_id="vehicle_car_scout",
+                owner_player_id="",
+                coordinate=WorldCoordinate(x=9.0, y=0.0, z=7.0),
+                orientation_yaw=0.0,
+                durability=self.vehicle_definitions["vehicle_car_scout"].max_durability,
+                fuel=self.vehicle_definitions["vehicle_car_scout"].fuel_capacity,
+                chunk_key=self.chunk_key(self.grid_config.to_chunk_address(WorldCoordinate(x=9.0, y=0.0, z=7.0))),
+            )
+        if "vehicle_boat_river" in self.vehicle_definitions:
+            self.world.vehicles["vehicle_runtime_boat_a"] = VehicleRuntime(
+                vehicle_id="vehicle_runtime_boat_a",
+                definition_id="vehicle_boat_river",
+                owner_player_id="",
+                coordinate=WorldCoordinate(x=64.0, y=0.0, z=64.0),
+                orientation_yaw=180.0,
+                durability=self.vehicle_definitions["vehicle_boat_river"].max_durability,
+                fuel=self.vehicle_definitions["vehicle_boat_river"].fuel_capacity,
+                chunk_key=self.chunk_key(self.grid_config.to_chunk_address(WorldCoordinate(x=64.0, y=0.0, z=64.0))),
+            )
 
         wolf = self.animal_definitions.get("wolf")
         dolphin = self.animal_definitions.get("dolphin")
@@ -1179,10 +1270,14 @@ class AuthoritativeServerRuntime:
             self._apply_intent(intent)
 
         self._apply_survival_tick()
+        self._update_world_time()
         self._update_world_systems()
         self.sound_events = [event for event in self.sound_events if self._tick_index - event.tick_index <= 3]
         self.recent_encounter_events = [
             event for event in self.recent_encounter_events if self._tick_index - event.tick_index <= 6
+        ]
+        self.authoritative_events = [
+            event for event in self.authoritative_events if self._tick_index - int(event.get("tick", 0)) <= 32
         ]
         self._refresh_chunk_interest()
         self._replicate_state()
@@ -1376,6 +1471,21 @@ class AuthoritativeServerRuntime:
                 }
                 for npc_id, npc in self.world.npcs.items()
             },
+            "vehicles": {
+                vehicle_id: {
+                    "vehicle_id": vehicle.vehicle_id,
+                    "definition_id": vehicle.definition_id,
+                    "owner_player_id": vehicle.owner_player_id,
+                    "coordinate": asdict(vehicle.coordinate),
+                    "orientation_yaw": vehicle.orientation_yaw,
+                    "durability": vehicle.durability,
+                    "fuel": vehicle.fuel,
+                    "passenger_player_ids": list(vehicle.passenger_player_ids),
+                    "chunk_key": vehicle.chunk_key,
+                    "persistence_class": vehicle.persistence_class,
+                }
+                for vehicle_id, vehicle in self.world.vehicles.items()
+            },
             "workbenches": {
                 workbench_id: {
                     "workbench_id": wb.workbench_id,
@@ -1384,6 +1494,13 @@ class AuthoritativeServerRuntime:
                     "power_group_id": wb.power_group_id,
                 }
                 for workbench_id, wb in self.world.workbenches.items()
+            },
+            "world_time": {
+                "tick": self.world_time.tick,
+                "day_index": self.world_time.day_index,
+                "tick_of_day": self.world_time.tick_of_day,
+                "day_night_state": self.world_time.day_night_state,
+                "elapsed_ticks": self.world_time.elapsed_ticks,
             },
         }
 
@@ -1651,6 +1768,37 @@ class AuthoritativeServerRuntime:
                 for workbench_id, payload in workbench_payload.items()
             }
 
+        vehicle_payload = world_payload.get("vehicles", {})
+        if vehicle_payload:
+            self.world.vehicles = {
+                vehicle_id: VehicleRuntime(
+                    vehicle_id=payload["vehicle_id"],
+                    definition_id=payload["definition_id"],
+                    owner_player_id=payload.get("owner_player_id", ""),
+                    coordinate=WorldCoordinate(**payload["coordinate"]),
+                    orientation_yaw=float(payload.get("orientation_yaw", 0.0)),
+                    durability=float(payload.get("durability", 100.0)),
+                    fuel=float(payload.get("fuel", 0.0)),
+                    passenger_player_ids=list(payload.get("passenger_player_ids", [])),
+                    chunk_key=payload.get(
+                        "chunk_key",
+                        self.chunk_key(self.grid_config.to_chunk_address(WorldCoordinate(**payload["coordinate"]))),
+                    ),
+                    persistence_class=payload.get("persistence_class", "persistent"),
+                )
+                for vehicle_id, payload in vehicle_payload.items()
+            }
+
+        world_time_payload = world_payload.get("world_time", {})
+        if world_time_payload:
+            self.world_time = WorldTimeRuntime(
+                tick=int(world_time_payload.get("tick", self.world_time.tick)),
+                day_index=int(world_time_payload.get("day_index", self.world_time.day_index)),
+                tick_of_day=int(world_time_payload.get("tick_of_day", self.world_time.tick_of_day)),
+                day_night_state=str(world_time_payload.get("day_night_state", self.world_time.day_night_state)),
+                elapsed_ticks=int(world_time_payload.get("elapsed_ticks", self.world_time.elapsed_ticks)),
+            )
+
     def _serialize_zombie_state(self, zombie_state: ZombieRuntimeState | None) -> dict | None:
         if zombie_state is None:
             return None
@@ -1732,6 +1880,14 @@ class AuthoritativeServerRuntime:
             "economy.mutate": self._handle_economy_mutation,
             "power.source_toggle": self._handle_power_toggle,
             "animal.use_ability": self._handle_animal_ability,
+            "player.respawn": self._handle_respawn,
+            "vehicle.enter": self._handle_vehicle_enter,
+            "vehicle.exit": self._handle_vehicle_exit,
+            "vehicle.intent_move": self._handle_vehicle_move_intent,
+            "mission.complete": self._handle_mission_complete_intent,
+            "world.time_set": self._handle_time_mutation_intent,
+            "world.environment_set": self._handle_environment_mutation_intent,
+            "event.inject": self._handle_event_injection_intent,
         }
 
         handler = handlers.get(intent.topic)
@@ -2048,6 +2204,7 @@ class AuthoritativeServerRuntime:
                 ability_ids=animal.state.ability_ids,
             )
             self._record_progression(player, xp_gain=6)
+            self._record_event("animal_infected", player.state.player_id, target_id=animal_id)
             return True, "ok"
 
         return False, "unsupported_interaction"
@@ -2126,6 +2283,7 @@ class AuthoritativeServerRuntime:
 
         self._progress_mission_objective(player.state.player_id, "mission_human_craft_weapon", "craft_item")
         self._record_progression(player, xp_gain=20)
+        self._record_event("item_crafted", player.state.player_id, metadata={"recipe_id": recipe_id})
         return True, "ok"
 
     def _handle_gather(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
@@ -2273,6 +2431,7 @@ class AuthoritativeServerRuntime:
         }
         self._record_progression(player, xp_gain=25)
         self._progress_mission_objective(player.state.player_id, "mission_human_survive_cycle", "build_structure")
+        self._record_event("structure_created", player.state.player_id, target_id=structure_id)
         return True, "ok"
 
     def _handle_structure_damage(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
@@ -2300,12 +2459,14 @@ class AuthoritativeServerRuntime:
         self.world.destruction_records.append(
             DestructionRuntimeRecord(target_id=structure_id, source_actor_id=player.state.player_id, damage=damage)
         )
+        self._record_event("structure_damaged", player.state.player_id, target_id=structure_id, metadata={"damage": damage})
         if structure.health == 0.0:
             structure.state = "destroyed"
             chunk = self.world.chunks.get(structure.chunk_key)
             if chunk is not None:
                 chunk.persistent_delta.destroyed_structure_ids.add(structure_id)
             self._progress_mission_objective(player.state.player_id, "mission_zombie_destroy_structure", "destroy_once")
+            self._record_event("structure_destroyed", player.state.player_id, target_id=structure_id)
         return True, "ok"
 
     def _handle_animal_tame(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
@@ -2336,6 +2497,7 @@ class AuthoritativeServerRuntime:
         )
         animal.owner_player_id = player.state.player_id
         self._record_progression(player, xp_gain=12)
+        self._record_event("animal_tamed", player.state.player_id, target_id=animal_id)
         return True, "ok"
 
     def _handle_horde_membership(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
@@ -2385,6 +2547,7 @@ class AuthoritativeServerRuntime:
             if player.currency_balance < amount:
                 return False, "insufficient_currency"
             player.currency_balance -= amount
+            self._record_event("economy_spend", player.state.player_id, metadata={"transaction_id": transaction_id, "amount": amount})
             return True, "ok"
 
         return False, "unsupported_economy_action"
@@ -2428,6 +2591,123 @@ class AuthoritativeServerRuntime:
         elif ability.domain == AnimalAbilityDomain.RESOURCE_GATHERING:
             pass
         return True, "ok"
+
+    def _handle_respawn(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
+        if player.state.form == PlayerForm.ZOMBIE:
+            if player.zombie_state is None or not player.zombie_state.dead:
+                return False, "respawn_not_available"
+            player.zombie_state.dead = False
+            player.zombie_state.health = 100.0
+            player.zombie_state.sleeping = False
+            player.human_state.dead = False
+            player.human_state.stats.health = 100.0
+        else:
+            if not player.human_state.dead:
+                return False, "respawn_not_available"
+            player.human_state.dead = False
+            player.human_state.stats.health = 100.0
+            player.human_state.stats.stamina = 100.0
+            player.human_state.stats.hunger = 0.0
+            player.human_state.stats.thirst = 0.0
+            if self.server_configuration.rule_set.custom_difficulty.get("death_penalty_multiplier", 1.0) > 0:
+                player.inventory.stacks = []
+                player.equipment_instances.clear()
+                player.equipment = PlayerEquipmentState()
+
+        player.human_state.position = WorldCoordinate(
+            x=float(payload.get("x", 0.0)),
+            y=float(payload.get("y", 0.0)),
+            z=float(payload.get("z", 0.0)),
+        )
+        self._record_event("player_respawned", player.state.player_id)
+        return True, "ok"
+
+    def _handle_vehicle_enter(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
+        vehicle_id = payload.get("vehicle_id")
+        if not isinstance(vehicle_id, str):
+            return False, "missing_vehicle_id"
+        vehicle = self.world.vehicles.get(vehicle_id)
+        if vehicle is None:
+            return False, "vehicle_not_found"
+        if not self._within_range(player.human_state.position, vehicle.coordinate, max_distance=6.0):
+            return False, "vehicle_out_of_range"
+        definition = self.vehicle_definitions.get(vehicle.definition_id)
+        if definition is None:
+            return False, "vehicle_definition_not_found"
+        if player.state.player_id in vehicle.passenger_player_ids:
+            return False, "already_in_vehicle"
+        if len(vehicle.passenger_player_ids) >= definition.seat_count:
+            return False, "vehicle_full"
+        vehicle.passenger_player_ids.append(player.state.player_id)
+        if not vehicle.owner_player_id:
+            vehicle.owner_player_id = player.state.player_id
+        self._record_event("vehicle_entered", player.state.player_id, target_id=vehicle_id)
+        return True, "ok"
+
+    def _handle_vehicle_exit(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
+        vehicle_id = payload.get("vehicle_id")
+        if not isinstance(vehicle_id, str):
+            return False, "missing_vehicle_id"
+        vehicle = self.world.vehicles.get(vehicle_id)
+        if vehicle is None:
+            return False, "vehicle_not_found"
+        if player.state.player_id not in vehicle.passenger_player_ids:
+            return False, "not_in_vehicle"
+        vehicle.passenger_player_ids = [pid for pid in vehicle.passenger_player_ids if pid != player.state.player_id]
+        player.human_state.position = WorldCoordinate(x=vehicle.coordinate.x + 1.0, y=vehicle.coordinate.y, z=vehicle.coordinate.z)
+        self._record_event("vehicle_exited", player.state.player_id, target_id=vehicle_id)
+        return True, "ok"
+
+    def _handle_vehicle_move_intent(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
+        vehicle_id = payload.get("vehicle_id")
+        if not isinstance(vehicle_id, str):
+            return False, "missing_vehicle_id"
+        vehicle = self.world.vehicles.get(vehicle_id)
+        if vehicle is None:
+            return False, "vehicle_not_found"
+        if player.state.player_id not in vehicle.passenger_player_ids:
+            return False, "vehicle_control_denied"
+        if vehicle.owner_player_id != player.state.player_id:
+            return False, "vehicle_control_denied"
+        try:
+            dx = float(payload.get("dx", 0.0))
+            dz = float(payload.get("dz", 0.0))
+        except (TypeError, ValueError):
+            return False, "invalid_vehicle_intent"
+        if abs(dx) > 20.0 or abs(dz) > 20.0:
+            return False, "vehicle_move_out_of_range"
+        if vehicle.fuel <= 0.0:
+            return False, "vehicle_no_fuel"
+        next_position = WorldCoordinate(
+            x=vehicle.coordinate.x + dx,
+            y=vehicle.coordinate.y,
+            z=vehicle.coordinate.z + dz,
+        )
+        try:
+            self.coordinate_mapper.validate_world_position(self._to_world_position(next_position))
+        except ValueError:
+            return False, "position_out_of_world_bounds"
+        vehicle.coordinate = next_position
+        vehicle.chunk_key = self.chunk_key(self.grid_config.to_chunk_address(vehicle.coordinate))
+        vehicle.fuel = max(0.0, vehicle.fuel - (abs(dx) + abs(dz)) * 0.05)
+        for passenger_id in vehicle.passenger_player_ids:
+            passenger = self.players.get(passenger_id)
+            if passenger is not None:
+                passenger.human_state.position = vehicle.coordinate
+        self._record_event("vehicle_moved", player.state.player_id, target_id=vehicle_id)
+        return True, "ok"
+
+    def _handle_mission_complete_intent(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
+        return False, "mission_completion_server_only"
+
+    def _handle_time_mutation_intent(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
+        return False, "time_mutation_server_only"
+
+    def _handle_environment_mutation_intent(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
+        return False, "environment_mutation_server_only"
+
+    def _handle_event_injection_intent(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
+        return False, "event_injection_not_allowed"
 
     def _loot_container(self, player: AuthoritativePlayer, container_id: str) -> tuple[bool, str]:
         container = self.world.containers.get(container_id)
@@ -2625,6 +2905,38 @@ class AuthoritativeServerRuntime:
 
         self._update_power_state()
         self._update_npc_ai()
+
+    def _update_world_time(self) -> None:
+        ticks_per_day = self.phase5_definitions.world_time.ticks_per_day if self.phase5_definitions else 2400
+        dawn_tick = self.phase5_definitions.world_time.dawn_tick if self.phase5_definitions else 600
+        dusk_tick = self.phase5_definitions.world_time.dusk_tick if self.phase5_definitions else 1800
+        self.world_time.tick = self._tick_index
+        self.world_time.elapsed_ticks += 1
+        self.world_time.tick_of_day = self.world_time.elapsed_ticks % max(ticks_per_day, 1)
+        self.world_time.day_index = self.world_time.elapsed_ticks // max(ticks_per_day, 1)
+        next_state = "day" if dawn_tick <= self.world_time.tick_of_day < dusk_tick else "night"
+        if next_state != self.world_time.day_night_state:
+            self.world_time.day_night_state = next_state
+            self._record_event("environment_changed", "server", metadata={"day_night_state": next_state})
+
+    def _record_event(
+        self,
+        event_type: str,
+        source_id: str,
+        *,
+        target_id: str | None = None,
+        metadata: dict[str, object] | None = None,
+    ) -> None:
+        self.authoritative_events.append(
+            {
+                "event_id": f"evt_{self._tick_index}_{len(self.authoritative_events)}",
+                "event_type": event_type,
+                "source_id": source_id,
+                "target_id": target_id,
+                "tick": self._tick_index,
+                "metadata": metadata or {},
+            }
+        )
 
     def _update_npc_ai(self) -> None:
         for npc in self.world.npcs.values():
@@ -3067,6 +3379,7 @@ class AuthoritativeServerRuntime:
         was_completed = state.completed
         state.completed_objective_ids.add(objective_id)
         state.completed = set(definition.objective_ids).issubset(state.completed_objective_ids)
+        self._record_event("mission_updated", player_id, target_id=mission_id, metadata={"objective_id": objective_id})
         if state.completed and not was_completed:
             player = self.players.get(player_id)
             if player is not None:
@@ -3305,6 +3618,20 @@ class AuthoritativeServerRuntime:
                         for device_id, device in self.world.powered_devices.items()
                     },
                 },
+                "vehicles": {
+                    vehicle_id: {
+                        "definition_id": vehicle.definition_id,
+                        "owner_player_id": vehicle.owner_player_id,
+                        "position": asdict(vehicle.coordinate),
+                        "orientation_yaw": vehicle.orientation_yaw,
+                        "durability": vehicle.durability,
+                        "fuel": vehicle.fuel,
+                        "passengers": list(vehicle.passenger_player_ids),
+                        "chunk_key": vehicle.chunk_key,
+                    }
+                    for vehicle_id, vehicle in self.world.vehicles.items()
+                    if self.chunk_key(self.grid_config.to_chunk_address(vehicle.coordinate)) in visible_chunk_keys
+                },
                 "hordes": {
                     horde_id: {
                         "leader_player_id": horde.leader_player_id,
@@ -3340,6 +3667,42 @@ class AuthoritativeServerRuntime:
                     for npc_id, npc in self.world.npcs.items()
                 },
                 "perception_events": list(self.latest_perception_events),
+                "authoritative_events": list(self.authoritative_events),
+                "world_time": {
+                    "tick": self.world_time.tick,
+                    "day_index": self.world_time.day_index,
+                    "tick_of_day": self.world_time.tick_of_day,
+                    "day_night_state": self.world_time.day_night_state,
+                    "elapsed_ticks": self.world_time.elapsed_ticks,
+                },
+                "unity_allowed_intents": [
+                    "player.move",
+                    "player.interact",
+                    "player.use_item",
+                    "player.emit_sound",
+                    "crafting.start",
+                    "structure.build",
+                    "structure.damage",
+                    "vehicle.enter",
+                    "vehicle.exit",
+                    "vehicle.intent_move",
+                    "mission.accept",
+                    "economy.mutate",
+                    "player.respawn",
+                ],
+                "server_rules": {
+                    "custom_rules": dict(self.server_configuration.rule_set.custom_rules),
+                    "custom_difficulty": dict(self.server_configuration.rule_set.custom_difficulty),
+                    "creative_mode_enabled": self.server_configuration.creative_mode_enabled,
+                    "is_public": self.server_configuration.is_public,
+                },
+                "real_world_provider_contracts": {
+                    "replaceable": self.real_world_provider_registry.is_replaceable(),
+                    "city_provider_bound": self.real_world_provider_registry.city_provider is not None,
+                    "building_provider_bound": self.real_world_provider_registry.building_provider is not None,
+                    "road_provider_bound": self.real_world_provider_registry.road_provider is not None,
+                    "poi_provider_bound": self.real_world_provider_registry.poi_provider is not None,
+                },
             }
             self.transport.push_snapshot(player_id, payload)
 
@@ -3368,6 +3731,7 @@ class AuthoritativeServerRuntime:
 
         return {
             "player_id": player.state.player_id,
+            "role": "zombie" if player.state.form == PlayerForm.ZOMBIE else "survivor",
             "form": player.state.form.value,
             "infection_progress": player.state.infection_progress,
             "zombie_sanity": player.state.zombie_sanity,
@@ -3377,7 +3741,22 @@ class AuthoritativeServerRuntime:
             "thirst": player.human_state.stats.thirst,
             "dead": player.human_state.dead,
             "position": asdict(player.human_state.position),
+            "chunk_key": self.chunk_key(self.grid_config.to_chunk_address(player.human_state.position)),
             "inventory_total_items": player.inventory.total_items(),
+            "inventory": [asdict(stack) for stack in player.inventory.stacks],
+            "equipment": {
+                "weapon_instance_id": player.equipment.equipped_weapon_instance_id,
+                "armor_instance_id": player.equipment.equipped_armor_instance_id,
+                "instances": {
+                    instance_id: {
+                        "item_id": instance.item_id,
+                        "durability": instance.durability,
+                        "max_durability": instance.max_durability,
+                        "equipped": instance.equipped,
+                    }
+                    for instance_id, instance in player.equipment_instances.items()
+                },
+            },
             "zombie_state": self._serialize_zombie_state(player.zombie_state),
             "missions": mission_state,
             "progression": {

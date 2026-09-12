@@ -1,0 +1,101 @@
+{
+  "server_rules": {
+    "pvp_enabled": false,
+    "pve_enabled": true,
+    "zombie_difficulty_multiplier": 1.0,
+    "hunger_thirst_multiplier": 1.0,
+    "loot_multiplier": 1.0,
+    "resource_rate_multiplier": 1.0,
+    "infection_multiplier": 1.0,
+    "death_penalty_multiplier": 1.0,
+    "mission_multiplier": 1.0,
+    "build_permissions": "owner_or_admin",
+    "creative_mode_private_only": true,
+    "custom_missions_allowed": true
+  },
+  "utilities": [
+    {
+      "utility_id": "utility_generator_small",
+      "category": "generator",
+      "power_required": 0.0,
+      "power_capacity": 100.0,
+      "connection_type": "grid"
+    },
+    {
+      "utility_id": "utility_fabricator",
+      "category": "powered_structure",
+      "power_required": 15.0,
+      "power_capacity": 0.0,
+      "connection_type": "grid"
+    }
+  ],
+  "vehicles": [
+    {
+      "definition_id": "vehicle_car_scout",
+      "vehicle_type": "car",
+      "seat_count": 4,
+      "max_durability": 350.0,
+      "fuel_capacity": 70.0,
+      "persistence_class": "persistent"
+    },
+    {
+      "definition_id": "vehicle_boat_river",
+      "vehicle_type": "boat",
+      "seat_count": 4,
+      "max_durability": 300.0,
+      "fuel_capacity": 60.0,
+      "persistence_class": "persistent"
+    },
+    {
+      "definition_id": "vehicle_plane_light",
+      "vehicle_type": "plane",
+      "seat_count": 2,
+      "max_durability": 260.0,
+      "fuel_capacity": 100.0,
+      "persistence_class": "persistent"
+    },
+    {
+      "definition_id": "vehicle_ship_player_built",
+      "vehicle_type": "boat",
+      "seat_count": 8,
+      "max_durability": 650.0,
+      "fuel_capacity": 150.0,
+      "persistence_class": "persistent"
+    },
+    {
+      "definition_id": "vehicle_plane_player_built",
+      "vehicle_type": "plane",
+      "seat_count": 4,
+      "max_durability": 420.0,
+      "fuel_capacity": 120.0,
+      "persistence_class": "persistent"
+    }
+  ],
+  "world_time": {
+    "ticks_per_day": 2400,
+    "dawn_tick": 600,
+    "dusk_tick": 1800
+  },
+  "environment_hooks": {
+    "affects_zombie_behavior": true,
+    "affects_npc_behavior": true,
+    "affects_farming": true,
+    "affects_weather": true,
+    "affects_lighting": true
+  },
+  "custom_content": {
+    "mission_ids": ["mission_custom_supply_run"],
+    "objective_types": ["reach_location", "collect_item", "survive_duration"],
+    "reward_types": ["currency", "item_bundle", "xp"],
+    "rule_ids": ["rule_custom_nocturnal_horde"],
+    "spawn_types": ["custom_infected_animal_spawn", "custom_patrol_spawn"],
+    "location_types": ["custom_safehouse", "custom_objective_zone"]
+  },
+  "real_world_provider_contracts": {
+    "city_data_provider": "replaceable",
+    "building_provider": "replaceable",
+    "road_provider": "replaceable",
+    "poi_provider": "replaceable",
+    "external_dataset_dependency_required": false
+  }
+}
