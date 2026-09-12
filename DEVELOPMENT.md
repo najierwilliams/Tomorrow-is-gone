@@ -18,14 +18,14 @@
   - Define contract surfaces for animals, loot tiers, crafting/workbenches, durability, vehicles, NPCs, missions, economy, and weather
   - Document Unity adapter boundaries while keeping gameplay rules engine-independent
 
-- **Phase 1.6 — Authoritative Multiplayer Slice (Recommended Next)**
-  - Not implemented yet in this architecture-hardening pass
-  - Implement a thin server-authoritative runtime over Phase 1.5 contracts
-  - Implement chunk interest management and persistence for a limited map district
-  - Implement one human and one zombie mission end-to-end
-  - Integrate replicated state snapshots into Unity adapter prototypes
+- **Phase 1.6 — Authoritative Multiplayer Slice (Implemented)**
+  - Implemented a thin server-authoritative runtime over Phase 1.5 contracts
+  - Implemented chunk interest management and limited-slice persistence behaviors
+  - Implemented one human and one zombie mission end-to-end runtime path
+  - Implemented local multiplayer simulation and authoritative combat replication
+  - Integrated replicated state snapshots into the Phase16 Unity adapter prototype
 
-- **Phase 2 — Core Gameplay Runtime Expansion**
+- **Phase 2 — Core Gameplay Runtime Expansion (Recommended Next)**
   - Expand movement, interactions, scavenging, survival loops on top of authority model
 
 - **Phase 3 — AI and Encounter Expansion**

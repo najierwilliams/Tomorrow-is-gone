@@ -5,11 +5,12 @@ A modular zombie survival/horror game foundation intended for future Unity devel
 PlayStation 5 is the exclusive target platform for all future architecture and runtime implementation.
 
 ## Current Development Phase
-**Phase 1.5 — Multiplayer World Architecture**
+**Phase 2 (next) — Core Gameplay Runtime Expansion**
 
 This repository now contains:
 - Implemented Phase 1 core prototypes
-- Phase 1.5 architecture contracts for long-term multiplayer world systems
+- Implemented Phase 1.5 architecture contracts for long-term multiplayer world systems
+- Implemented Phase 1.6 authoritative multiplayer runtime slice
 - Documentation for engine-independent boundaries and future Unity integration
 - PS5-focused architecture constraints for large persistent multiplayer worlds
 
@@ -24,7 +25,7 @@ This repository now contains:
 - `/unity` — Unity-specific adapters (future runtime integration)
 - `/tests` — focused foundational and contract tests
 
-## Implemented Systems (Phase 1)
+## Implemented Prototype Systems (Phases 1, 1.5, and 1.6)
 - Player stats (health/stamina/hunger/thirst)
 - Health and damage handling
 - Stamina spending/recovery
@@ -35,27 +36,25 @@ This repository now contains:
 - Loot table rolling
 - Experience/level progression
 - Save/load data structures (JSON snapshot)
-
-## Designed Systems (Phase 1.5, architecture-level)
-- Server architecture/configuration contracts
-- Unified player state for human/infected/zombie
-- Transformation and zombie sanity contracts (including cure-gated reversion and sanity bands)
-- Animal infection/taming/ability contracts
-- Region/chunk/streaming world contracts with configurable finite vertical world range
-- Building/destruction persistence contracts
-- Loot tier/container contracts with explicit container-tier-to-pool eligibility boundaries
-- Crafting/workbench contracts
-- Item durability general contracts
-- Vehicle, NPC, mission, economy, weather contracts
-- Save/persistence domain partitioning contracts
-- Multiplayer authority/replication contracts
-- Client command-intent contract surface for server-authoritative simulation
-- Unity integration port contracts
+- Phase 1.5 engine-independent multiplayer architecture contracts
+- Authoritative server runtime loop with server-owned player/world state
+- Client intent -> server validation -> authoritative mutation command flow
+- HUMAN -> INFECTED_HUMAN -> ZOMBIE transitions with cure-gated reversal
+- HumanRuntimeState and ZombieRuntimeState runtime models
+- Chunk/world interest management for replicated snapshots
+- Server-authoritative tiered container loot generation
+- File-backed partitioned persistence for player/inventory/world/loot/server config
+- Human and zombie mission acceptance/progression runtime paths
+- Local multiplayer simulation via in-process transport
+- Authoritative zombie-to-human combat replication
+- Unity boundary adapter (`Phase16UnityAdapter`) for snapshot projection
 
 See:
 - `docs/ARCHITECTURE.md`
 - `docs/PHASE_1_5_MULTIPLAYER_WORLD_ARCHITECTURE.md`
+- `docs/PHASE_1_6_AUTHORITATIVE_MULTIPLAYER_SLICE.md`
 - `prototypes/core/phase15_contracts.py`
+- `prototypes/core/phase16_authoritative_runtime.py`
 
 ## Run Prototypes and Tests
 From repository root:
@@ -65,14 +64,15 @@ python -m unittest discover -s tests -p "test_*.py"
 ```
 
 ## What Is Not Implemented Yet
-- Full gameplay implementation for Phase 1.5 systems
-- Phase 1.6 runtime gameplay implementation (not started in this repository task)
-- Full server runtime, transport, and persistence backend
-- Unity gameplay implementation and world streaming runtime
-- Full content authoring for all long-term game datasets
+- Production networking stack and live service infrastructure
+- PS5 platform integration/runtime packaging
+- Full open-world city content and complete gameplay feature set
+- Production-grade server browser, matchmaking, and deployment tooling
+- Full Unity gameplay implementation and large-scale world streaming content
+- Future late-phase PC expansion and mod/community platform support
 
 ## Recommended Next Step
-**Phase 1.6 — Authoritative Multiplayer Slice**
-- Build a minimal server-authoritative runtime using Phase 1.5 contracts.
-- Validate chunk streaming + persistence on a limited world slice.
-- Connect initial replicated state flows into Unity adapter prototypes.
+**Phase 2 — Core Gameplay Runtime Expansion**
+- Expand gameplay loops on top of the implemented authoritative runtime slice.
+- Extend mission/content depth and progression systems while preserving server authority.
+- Continue toward production networking and platform integration in later phases.
