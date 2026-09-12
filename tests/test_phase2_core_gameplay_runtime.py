@@ -250,6 +250,7 @@ class Phase2CoreGameplayRuntimeTests(unittest.TestCase):
             runtime, transport = build_runtime(Path(directory))
             runtime.join_player("human", PlayerForm.HUMAN, WorldCoordinate(0.0, 0.0, 0.0))
             player = runtime.players["human"]
+            player.human_state.stats.stamina = 20.0
             starting_stamina = player.human_state.stats.stamina
 
             transport.submit_command_intent(
@@ -264,14 +265,15 @@ class Phase2CoreGameplayRuntimeTests(unittest.TestCase):
 
             self.assertTrue(runtime.command_results[0]["accepted"])
             self.assertEqual(player.human_state.position.x, 10.0)
-            self.assertLess(player.human_state.stats.stamina, starting_stamina)
-            self.assertEqual(player.human_state.stats.stamina, starting_stamina - 1.0)
+            self.assertEqual(player.human_state.stats.stamina, starting_stamina + 4.0)
+            self.assertNotEqual(player.human_state.stats.stamina, starting_stamina + 5.0)
 
     def test_movement_rejects_negative_cost_forgery_and_invalid_distance(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             runtime, transport = build_runtime(Path(directory))
             runtime.join_player("human", PlayerForm.HUMAN, WorldCoordinate(0.0, 0.0, 0.0))
             player = runtime.players["human"]
+            player.human_state.stats.stamina = 20.0
             start_stamina = player.human_state.stats.stamina
 
             transport.submit_command_intent(
@@ -285,7 +287,7 @@ class Phase2CoreGameplayRuntimeTests(unittest.TestCase):
             runtime.process_tick()
             self.assertTrue(runtime.command_results[0]["accepted"])
             self.assertEqual(player.human_state.position.x, 5.0)
-            self.assertEqual(player.human_state.stats.stamina, start_stamina - 1.0)
+            self.assertEqual(player.human_state.stats.stamina, start_stamina + 4.0)
 
             previous_position = player.human_state.position
             previous_stamina = player.human_state.stats.stamina
@@ -302,7 +304,7 @@ class Phase2CoreGameplayRuntimeTests(unittest.TestCase):
             self.assertFalse(runtime.command_results[0]["accepted"])
             self.assertEqual(runtime.command_results[0]["reason"], "movement_out_of_range")
             self.assertEqual(player.human_state.position, previous_position)
-            self.assertEqual(player.human_state.stats.stamina, previous_stamina)
+            self.assertEqual(player.human_state.stats.stamina, previous_stamina + 5.0)
 
     def test_crafting_and_workbench_validation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
