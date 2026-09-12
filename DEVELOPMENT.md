@@ -37,20 +37,27 @@
   - Added human NPC encounter response foundation (threat detection, flee/combat, investigate/wander)
   - Added chunk-aware AI evaluation, AI state persistence, and Unity adapter AI/perception projection support
 
-- **Phase 4 — Combat and Equipment Runtime (Recommended Next)**
+- **Phase 4 — World, Streaming & Environment (Implemented)**
+  - Added engine-independent large finite world coordinate contracts and deterministic world addressing
+  - Added chunk lifecycle metadata and data-driven streaming/interest radii
+  - Added deterministic baseline world generation contracts and static-vs-dynamic persistent delta separation
+  - Added biome/POI/spawn/environment/season/weather/underwater data contracts and definitions
+  - Extended authoritative runtime + Unity adapter projection for chunk metadata and environment state
+
+- **Phase 5 — Combat and Equipment Runtime**
   - Implement modular combat resolution, durability interactions, and balancing
 
-- **Phase 5 — World and Content Scale-Out**
-  - Expand region streaming, mission content, weather profiles, and economy depth
+- **Phase 6 — World and Content Scale-Out**
+  - Expand city/region content density and mission/world-event depth
 
-- **Phase 6 — Unity Multiplayer Integration**
+- **Phase 7 — Unity Multiplayer Integration**
   - Productionize Unity-side adapters, transport, prediction/interpolation, and content streaming
 
-- **Phase 7 — Playable Alpha**
+- **Phase 8 — Playable Alpha**
   - Stable multiplayer vertical slice with persistence and progression
 
-- **Phase 8 — Public Early Build**
+- **Phase 9 — Public Early Build**
   - External testing, balancing passes, and iterative systems hardening
 
-- **Phase 9 — Live Expansion**
+- **Phase 10 — Live Expansion**
   - Content growth, optimization, and post-launch systems evolution

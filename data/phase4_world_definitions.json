@@ -1,0 +1,103 @@
+{
+  "chunk_dimensions": {
+    "chunk_size_xz": 64,
+    "chunk_height": 32
+  },
+  "region_dimensions": {
+    "chunks_per_region_xz": 8,
+    "chunks_per_region_y": 8
+  },
+  "world_bounds": {
+    "minimum_x": -1048576,
+    "maximum_x": 1048576,
+    "minimum_y": -256,
+    "maximum_y": 256,
+    "minimum_z": -1048576,
+    "maximum_z": 1048576
+  },
+  "streaming_distances": {
+    "simulation_radius": 2,
+    "replication_radius": 2,
+    "persistence_activation_radius": 3,
+    "ai_interest_radius": 2,
+    "vertical_radius": 1
+  },
+  "world_generation": {
+    "seed": 42042,
+    "generation_version": 1
+  },
+  "biomes": [
+    {
+      "biome_id": "urban",
+      "terrain_characteristics": {"density": 0.9, "elevation_variance": 0.2},
+      "resource_pool_ids": ["metal", "food"],
+      "vegetation_pool_ids": ["street_tree"],
+      "animal_pool_ids": ["infected_hound"],
+      "zombie_spawn_tendencies": {"walker": 0.8, "sprinter": 0.2},
+      "npc_spawn_tendencies": {"survivor": 0.5},
+      "temperature_range": {"minimum": -5, "maximum": 35},
+      "environment_modifiers": {"visibility": 0.8}
+    },
+    {
+      "biome_id": "forest",
+      "terrain_characteristics": {"density": 0.7, "elevation_variance": 0.5},
+      "resource_pool_ids": ["wood", "plants"],
+      "vegetation_pool_ids": ["oak", "pine"],
+      "animal_pool_ids": ["wolf"],
+      "zombie_spawn_tendencies": {"walker": 0.6, "crawler": 0.4},
+      "npc_spawn_tendencies": {"hunter": 0.3},
+      "temperature_range": {"minimum": -15, "maximum": 30},
+      "environment_modifiers": {"noise_dampening": 0.4}
+    },
+    {
+      "biome_id": "coastal",
+      "terrain_characteristics": {"density": 0.3, "elevation_variance": 0.1},
+      "resource_pool_ids": ["food", "plants"],
+      "vegetation_pool_ids": ["reed"],
+      "animal_pool_ids": ["dolphin"],
+      "zombie_spawn_tendencies": {"walker": 0.5, "bloater": 0.1},
+      "npc_spawn_tendencies": {"fisher": 0.2},
+      "temperature_range": {"minimum": 0, "maximum": 33},
+      "environment_modifiers": {"humidity": 0.9}
+    },
+    {
+      "biome_id": "underwater",
+      "terrain_characteristics": {"density": 0.2, "elevation_variance": 0.3},
+      "resource_pool_ids": ["underwater_metal"],
+      "vegetation_pool_ids": ["kelp"],
+      "animal_pool_ids": ["shark"],
+      "zombie_spawn_tendencies": {"drowned": 0.8},
+      "npc_spawn_tendencies": {},
+      "temperature_range": {"minimum": -2, "maximum": 25},
+      "environment_modifiers": {"movement_speed_multiplier": 0.6}
+    }
+  ],
+  "resources": [
+    {"resource_id": "wood", "node_type": "wood_stump", "persistent_depletion": true, "respawn_ticks": 2},
+    {"resource_id": "stone", "node_type": "stone_vein", "persistent_depletion": true, "respawn_ticks": 5},
+    {"resource_id": "metal", "node_type": "scrap_pile", "persistent_depletion": true, "respawn_ticks": 3},
+    {"resource_id": "plants", "node_type": "plant_patch", "persistent_depletion": false, "respawn_ticks": 2}
+  ],
+  "pois": [
+    {"poi_id": "poi_house", "poi_type": "house", "placement_tags": ["residential"], "allowed_biomes": ["urban", "suburban"], "spawn_weight": 1.0},
+    {"poi_id": "poi_hospital", "poi_type": "hospital", "placement_tags": ["medical"], "allowed_biomes": ["urban"], "spawn_weight": 0.2},
+    {"poi_id": "poi_underwater_lab", "poi_type": "underwater_lab", "placement_tags": ["underwater"], "allowed_biomes": ["underwater"], "spawn_weight": 0.1}
+  ],
+  "spawn_rules": [
+    {"spawn_type": "npc_zombie", "allowed_biomes": ["urban", "forest", "coastal"], "max_active": 200, "min_distance_from_players": 12},
+    {"spawn_type": "npc_human", "allowed_biomes": ["urban", "forest"], "max_active": 80, "min_distance_from_players": 16},
+    {"spawn_type": "animal", "allowed_biomes": ["forest", "coastal", "underwater"], "max_active": 120, "min_distance_from_players": 8}
+  ],
+  "environment_states": [
+    {"state_id": "clear", "temperature_modifier": 0.0, "precipitation": 0.0},
+    {"state_id": "rain", "temperature_modifier": -2.0, "precipitation": 0.7},
+    {"state_id": "storm", "temperature_modifier": -4.0, "precipitation": 1.0},
+    {"state_id": "snow", "temperature_modifier": -8.0, "precipitation": 0.9}
+  ],
+  "season_definitions": [
+    {"season_id": "spring", "temperature_modifier": 3.0, "precipitation_modifier": 0.2, "weather_weights": {"clear": 0.4, "rain": 0.5, "storm": 0.1}},
+    {"season_id": "summer", "temperature_modifier": 8.0, "precipitation_modifier": 0.0, "weather_weights": {"clear": 0.7, "rain": 0.2, "storm": 0.1}},
+    {"season_id": "fall", "temperature_modifier": 1.0, "precipitation_modifier": 0.3, "weather_weights": {"clear": 0.4, "rain": 0.4, "storm": 0.2}},
+    {"season_id": "winter", "temperature_modifier": -9.0, "precipitation_modifier": 0.5, "weather_weights": {"clear": 0.2, "snow": 0.6, "storm": 0.2}}
+  ]
+}

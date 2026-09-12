@@ -5,7 +5,7 @@ A modular zombie survival/horror game foundation intended for future Unity devel
 PlayStation 5 is the exclusive target platform for all future architecture and runtime implementation.
 
 ## Current Development Phase
-**Phase 3 (implemented) — AI & Encounter Expansion**
+**Phase 4 (implemented) — World, Streaming & Environment**
 
 This repository now contains:
 - Implemented Phase 1 core prototypes
@@ -13,6 +13,7 @@ This repository now contains:
 - Implemented Phase 1.6 authoritative multiplayer runtime slice
 - Implemented Phase 2 core gameplay runtime expansion systems
 - Implemented Phase 3 server-authoritative AI/navigation/perception/encounter expansion systems
+- Implemented Phase 4 engine-independent world/streaming/environment foundation with deterministic chunk generation and data-driven world definitions
 - Documentation for engine-independent boundaries and future Unity integration
 - PS5-focused architecture constraints for large persistent multiplayer worlds
 
@@ -44,6 +45,12 @@ This repository now contains:
 - HUMAN -> INFECTED_HUMAN -> ZOMBIE transitions with cure-gated reversal
 - HumanRuntimeState and ZombieRuntimeState runtime models
 - Chunk/world interest management for replicated snapshots
+- Phase 4 world coordinate mapper contracts with finite large-world bounds and deterministic world/region/chunk/local addressing
+- Chunk lifecycle states (`UNLOADED -> LOADING -> ACTIVE -> UNLOADING -> UNLOADED` + failed state)
+- Data-driven streaming radii (simulation/replication/persistence/AI/vertical) loaded from `data/phase4_world_definitions.json`
+- Deterministic world generation abstraction (`prototypes/core/phase4_world.py`) for terrain/resource/POI/spawn baselines
+- Static baseline vs persistent delta contracts for scalable world persistence
+- Engine-independent biome, POI, spawn, season/weather, environment-state, world-event, and underwater-capable contracts
 - Server-authoritative tiered container loot generation
 - File-backed partitioned persistence for player/inventory/world/loot/server config
 - Human and zombie mission acceptance/progression runtime paths
@@ -61,6 +68,7 @@ This repository now contains:
 - Server-authoritative zombie perception (vision/hearing/memory), target scoring/switching, pursuit abandonment, recruitment, and dynamic horde splitting
 - Human NPC encounter behavior foundation (threat detection, flee/combat response, investigation/wander)
 - Chunk-aware AI evaluation and persisted NPC AI memory/state with Unity adapter projection support
+- Chunk lifecycle/environment metadata projection through authoritative replication and Unity adapter world view
 
 See:
 - `docs/ARCHITECTURE.md`
@@ -68,8 +76,10 @@ See:
 - `docs/PHASE_1_6_AUTHORITATIVE_MULTIPLAYER_SLICE.md`
 - `docs/PHASE_2_CORE_GAMEPLAY_RUNTIME_EXPANSION.md`
 - `docs/PHASE_3_AI_AND_ENCOUNTER_EXPANSION.md`
+- `docs/PHASE_4_WORLD_STREAMING_AND_ENVIRONMENT.md`
 - `prototypes/core/phase15_contracts.py`
 - `prototypes/core/phase16_authoritative_runtime.py`
+- `prototypes/core/phase4_world.py`
 
 ## Run Prototypes and Tests
 From repository root:
@@ -87,6 +97,6 @@ python -m unittest discover -s tests -p "test_*.py"
 - Future late-phase PC expansion and mod/community platform support
 
 ## Recommended Next Step
-**Phase 4 — Combat and Equipment Runtime**
-- Expand combat depth and balancing over the now-established authoritative encounter AI layer.
+**Phase 5 — Combat and Equipment Runtime**
+- Expand combat depth and balancing over the now-established authoritative world + encounter layer.
 - Continue platform/transport productionization while preserving core engine independence.

@@ -66,6 +66,20 @@ Implementation level in this phase:
 - Extended Unity adapter projection to include NPC AI state and perception events
 - Added focused Phase 3 deterministic tests in `tests/test_phase3_ai_encounter_expansion.py`
 
+### Phase 4 — World, Streaming and Environment (Implemented)
+Phase 4 extends the authoritative runtime with an engine-independent world foundation for large persistent regions and chunk streaming.
+
+Implementation level in this phase:
+- Added engine-independent world contracts module in `prototypes/core/phase4_world.py`
+- Added data-driven world definitions in `data/phase4_world_definitions.json`
+- Added large finite world coordinate mapping (world -> region -> chunk -> local and reverse) with bounds validation
+- Added chunk lifecycle metadata (`unloaded/loading/active/unloading/failed`) and deterministic chunk baseline generation
+- Added configurable streaming/interest radii (simulation, replication, persistence, AI, vertical)
+- Added static baseline vs persistent delta contracts for scalable persistence
+- Added world object/resource/spawn/environment/season/underwater/event contract foundations
+- Extended runtime and Unity adapter snapshots with chunk metadata and environment-state projection
+- Added focused Phase 4 tests in `tests/test_phase4_world_streaming_environment.py`
+
 ## Phase 1.5 Layering Model
 
 - **Engine-independent contracts (now):**
@@ -126,7 +140,7 @@ Unity remains an integration shell around engine-independent rules:
 
 ## Recommended Next Phase
 
-**Phase 4 — Combat and Equipment Runtime**
-- Expand modular combat depth and equipment balancing over the new encounter AI layer.
+**Phase 5 — Combat and Equipment Runtime**
+- Expand modular combat depth and equipment balancing over the world + encounter layers.
 - Continue PS5-first runtime progression while preserving server-authoritative boundaries.
 - Stage production networking/platform concerns for later phases.
