@@ -30,7 +30,17 @@ Not implemented in this phase:
 - Unity runtime implementation
 - Networking transport implementation
 - Database/back-end implementation
-- Phase 1.6 authoritative runtime slice
+- Phase 1.6 authoritative runtime slice (implemented in the next phase)
+
+### Phase 1.6 — Authoritative Multiplayer Slice (Implemented)
+Phase 1.6 adds a runnable authoritative prototype runtime on top of the Phase 1.5 contracts.
+
+Implementation level in this phase:
+- Added runtime implementation: `prototypes/core/phase16_authoritative_runtime.py`
+- Added Unity adapter implementation: `unity/phase16_unity_adapter.py`
+- Added runtime validation tests: `tests/test_phase16_authoritative_slice.py`
+- Added phase documentation: `docs/PHASE_1_6_AUTHORITATIVE_MULTIPLAYER_SLICE.md`
+- Validated authoritative command-intent flow, chunk interest management, tiered loot, partitioned persistence, missions, and combat replication
 
 ## Phase 1.5 Layering Model
 
@@ -92,8 +102,7 @@ Unity remains an integration shell around engine-independent rules:
 
 ## Recommended Next Phase
 
-**Phase 1.6 — Multiplayer Runtime Vertical Slice**
-- Implement a minimal authoritative server loop over selected Phase 1.5 contracts.
-- Implement chunk interest management + persistence for a limited test map.
-- Implement one end-to-end mission path for both human and zombie audiences.
-- Implement Unity adapters for replicated player/world snapshots.
+**Phase 2 — Core Gameplay Runtime Expansion**
+- Expand gameplay depth on top of the validated authoritative runtime slice.
+- Continue PS5-first runtime progression while preserving server-authoritative boundaries.
+- Stage production networking/platform concerns for later phases.
