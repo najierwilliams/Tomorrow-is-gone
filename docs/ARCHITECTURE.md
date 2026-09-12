@@ -2,6 +2,8 @@
 
 ## Current Architecture Phases
 
+Platform target: **PlayStation 5 exclusive**.
+
 ### Phase 1 — Foundation (Implemented)
 Phase 1 provides engine-independent prototype rules in `prototypes/core` and data-driven JSON content in `data/`.
 
@@ -21,12 +23,14 @@ Implementation level in this phase:
 - Added architecture contracts module: `prototypes/core/phase15_contracts.py`
 - Added architecture-level contract tests: `tests/test_phase15_architecture_contracts.py`
 - Added design document: `docs/PHASE_1_5_MULTIPLAYER_WORLD_ARCHITECTURE.md`
+- Hardened contract boundaries for cure-gated form transitions, zombie sanity bands, finite vertical world partitioning, loot container-tier eligibility mapping, and server-authoritative client-intent flows
 
 Not implemented in this phase:
 - Full gameplay logic for new systems
 - Unity runtime implementation
 - Networking transport implementation
 - Database/back-end implementation
+- Phase 1.6 authoritative runtime slice
 
 ## Phase 1.5 Layering Model
 
@@ -52,23 +56,25 @@ At a high level:
 1. Server architecture owns session authority and system orchestration.
 2. Server configuration injects rules into all gameplay systems.
 3. Player state is unified across human/infected/zombie forms.
-4. Transformation and zombie sanity extend player state rather than forking architecture.
-5. Animal state and abilities are data-driven and shared across normal/infected/tamed variants.
-6. World region/chunk architecture is required for 1:1-scale streaming and persistence.
-7. Building/destruction persist deltas, not full scene state.
-8. Loot/crafting/durability/vehicles/NPC/missions/economy/weather all depend on server config + persistence contracts.
-9. Multiplayer authority/sync defines write ownership and replicated topics.
-10. Unity integration remains an adapter layer over contract-defined systems.
+4. Transformation and zombie sanity extend player state rather than forking architecture, and human reversion is cure-gated.
+5. Zombie sanity behavior consequences remain data-driven via sanity bands.
+6. Animal state and abilities are data-driven and shared across normal/infected/tamed variants.
+7. World region/chunk architecture is required for 1:1-scale streaming and persistence with configurable finite vertical range comparable to large Minecraft-style finite limits.
+8. Building/destruction persist deltas, not full scene state.
+9. Loot architecture distinguishes container -> container tier -> eligible loot pools before runtime randomization.
+10. Loot/crafting/durability/vehicles/NPC/missions/economy/weather all depend on server config + persistence contracts.
+11. Multiplayer authority/sync defines write ownership and replicated topics, with clients submitting command intents.
+12. Unity integration remains an adapter layer over contract-defined systems.
 
 ## Data-Driven Expansion Strategy
 
 Phase 1.5 architecture expands the contract surface to support:
 - Server configs and custom rules
-- Zombie tiers and sanity
+- Zombie tiers and sanity bands
 - Animal infection/taming/abilities
-- Chunked world regions and persistent world edits
+- Chunked world regions and persistent world edits across configurable finite vertical layers (surface, underground, underwater, above-ground construction)
 - Structures and destruction records
-- Loot tiers and containers
+- Loot tiers, container tiers, and container eligibility contracts
 - Recipes and workbench requirements
 - Durability state
 - Vehicles, NPCs, missions, economy, weather

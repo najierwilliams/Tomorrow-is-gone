@@ -23,7 +23,11 @@ def is_valid_form_transition(
     if current == PlayerForm.HUMAN:
         return target == PlayerForm.INFECTED_HUMAN
     if current == PlayerForm.INFECTED_HUMAN:
-        return target in {PlayerForm.ZOMBIE, PlayerForm.HUMAN}
+        if target == PlayerForm.ZOMBIE:
+            return True
+        if target == PlayerForm.HUMAN:
+            return cure_available
+        return False
     if current == PlayerForm.ZOMBIE and target == PlayerForm.HUMAN:
         return cure_available
     return False
@@ -45,6 +49,18 @@ class ZombieTierDefinition:
     feeding_efficiency: float
 
 
+@dataclass(frozen=True)
+class ZombieSanityBandDefinition:
+    band_id: str
+    minimum: float
+    maximum: float
+    human_coexistence_allowed: bool
+    hostility_level: float
+    cure_eligible: bool
+    mission_availability_tags: list[str] = field(default_factory=list)
+    behavior_tags: list[str] = field(default_factory=list)
+
+
 @dataclass
 class ZombieSanityState:
     value: float
@@ -53,6 +69,23 @@ class ZombieSanityState:
 
     def apply_delta(self, delta: float) -> None:
         self.value = max(self.minimum, min(self.maximum, self.value + delta))
+
+
+def resolve_zombie_sanity_band(
+    sanity_value: float,
+    bands: list[ZombieSanityBandDefinition],
+) -> ZombieSanityBandDefinition | None:
+    for band in bands:
+        if band.minimum <= sanity_value < band.maximum:
+            return band
+    if not bands:
+        return None
+    highest_maximum = max(band.maximum for band in bands)
+    if sanity_value == highest_maximum:
+        for band in bands:
+            if band.maximum == highest_maximum:
+                return band
+    return None
 
 
 @dataclass(frozen=True)
@@ -125,8 +158,10 @@ class WorldCoordinate:
 @dataclass(frozen=True)
 class ChunkAddress:
     region_x: int
+    region_y: int
     region_z: int
     chunk_x: int
+    chunk_y: int
     chunk_z: int
 
 
@@ -134,14 +169,26 @@ class ChunkAddress:
 class WorldGridConfig:
     chunk_size_meters: int
     chunks_per_region: int
+    chunk_height_meters: int = 64
+    chunks_per_vertical_region: int = 64
+    minimum_world_y_meters: int = -2048
+    maximum_world_y_meters: int = 2048
+
+    def supports_vertical_coordinate(self, y: float) -> bool:
+        return self.minimum_world_y_meters <= y <= self.maximum_world_y_meters
 
     def to_chunk_address(self, coordinate: WorldCoordinate) -> ChunkAddress:
+        if not self.supports_vertical_coordinate(coordinate.y):
+            raise ValueError("coordinate y is outside configured vertical world bounds")
         chunk_x = floor(coordinate.x / self.chunk_size_meters)
+        chunk_y = floor(coordinate.y / self.chunk_height_meters)
         chunk_z = floor(coordinate.z / self.chunk_size_meters)
         return ChunkAddress(
             region_x=floor(chunk_x / self.chunks_per_region),
+            region_y=floor(chunk_y / self.chunks_per_vertical_region),
             region_z=floor(chunk_z / self.chunks_per_region),
             chunk_x=chunk_x,
+            chunk_y=chunk_y,
             chunk_z=chunk_z,
         )
 
@@ -167,12 +214,15 @@ class DestructionRecord:
 class LootTierDefinition:
     tier_id: str
     weight: float
-    loot_table_ids: list[str]
+    eligible_loot_pool_ids: list[str]
+    eligible_categories: list[str] = field(default_factory=list)
+    eligible_quality_levels: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class LootContainerDefinition:
     container_type: str
+    container_tier_id: str
     tier_weights: dict[str, float]
     respawn_seconds: int
 
@@ -313,6 +363,16 @@ class ReplicationRule:
     channel_id: str
     authority: AuthorityRole
     state_topics: list[str]
+    server_authoritative: bool = True
+    client_command_topics: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ClientCommandIntent:
+    command_id: str
+    player_id: str
+    topic: str
+    payload: dict[str, object]
 
 
 class ServerConfigurationProvider(Protocol):
@@ -333,9 +393,20 @@ class WorldChunkStream(Protocol):
         ...
 
 
+class LootGenerationPort(Protocol):
+    def generate_loot_for_container(
+        self,
+        container: LootContainerDefinition,
+        tier_definitions: dict[str, LootTierDefinition],
+        *,
+        seed: int | None = None,
+    ) -> list[dict]:
+        ...
+
+
 class UnityIntegrationPort(Protocol):
     def push_state_snapshot(self, topic: str, payload: dict) -> None:
         ...
 
-    def pull_input_commands(self) -> list[dict]:
+    def pull_input_commands(self) -> list[ClientCommandIntent]:
         ...
