@@ -83,6 +83,7 @@ See:
 - `docs/PHASE_3_AI_AND_ENCOUNTER_EXPANSION.md`
 - `docs/PHASE_4_WORLD_STREAMING_AND_ENVIRONMENT.md`
 - `docs/PHASE_5_FINAL_CORE_SYSTEMS_AND_UNITY_PREPARATION.md`
+- `docs/REPOSITORY_DEVELOPMENT_GUIDE.md`
 - `prototypes/core/phase15_contracts.py`
 - `prototypes/core/phase16_authoritative_runtime.py`
 - `prototypes/core/phase4_world.py`

@@ -1,2 +1,79 @@
 __pycache__/
 *.pyc
+
+# Python tooling
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Unity generated/cache directories
+/unity/[Ll]ibrary/
+/unity/[Tt]emp/
+/unity/[Oo]bj/
+/unity/[Ll]ogs/
+/unity/[Uu]ser[Ss]ettings/
+/unity/[Mm]emoryCaptures/
+/Unity/[Ll]ibrary/
+/Unity/[Tt]emp/
+/Unity/[Oo]bj/
+/Unity/[Ll]ogs/
+/Unity/[Uu]ser[Ss]ettings/
+/Unity/[Mm]emoryCaptures/
+
+# Unity/IDE generated project files
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+.idea/
+.vscode/
+
+# Build and release outputs
+/Build/
+/Builds/
+/dist/
+/out/
+/releases/
+/artifacts/
+/server-build/
+*.exe
+*.app
+*.apk
+*.aab
+*.ipa
+*.dmg
+*.pkg
+
+# Generated world/city data and live server state
+/generated-world-data/
+/world-cache/
+/navmesh-cache/
+/city-import-cache/
+/server-data/
+/live-data/
+/saves/
+/database/
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+secrets*.json
+credentials*.json
+
+# OS files
+.DS_Store
+Thumbs.db
