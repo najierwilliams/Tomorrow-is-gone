@@ -3,20 +3,23 @@
 A modular zombie survival/horror game foundation intended for future Unity development.
 
 ## Current Development Phase
-**Phase 1 — Foundation**
+**Phase 1.5 — Multiplayer World Architecture**
 
-This repository currently contains architecture, data schemas, and engine-independent prototypes for core survival systems.
+This repository now contains:
+- Implemented Phase 1 core prototypes
+- Phase 1.5 architecture contracts for long-term multiplayer world systems
+- Documentation for engine-independent boundaries and future Unity integration
 
 ## Repository Structure
 - `/docs` — architecture and Unity integration documentation
 - `/design` — design references
 - `/systems` — future production systems
-- `/data` — data-driven item and loot definitions
+- `/data` — data-driven definitions and future schema sources
 - `/assets` — game assets (placeholder/production)
 - `/tools` — utility scripts and pipelines
-- `/prototypes` — executable Phase 1 prototypes
-- `/unity` — Unity-specific adapters (future)
-- `/tests` — focused foundational tests
+- `/prototypes` — executable Phase 1 prototypes + Phase 1.5 architecture contracts
+- `/unity` — Unity-specific adapters (future runtime integration)
+- `/tests` — focused foundational and contract tests
 
 ## Implemented Systems (Phase 1)
 - Player stats (health/stamina/hunger/thirst)
@@ -30,6 +33,26 @@ This repository currently contains architecture, data schemas, and engine-indepe
 - Experience/level progression
 - Save/load data structures (JSON snapshot)
 
+## Designed Systems (Phase 1.5, architecture-level)
+- Server architecture/configuration contracts
+- Unified player state for human/infected/zombie
+- Transformation and zombie sanity contracts
+- Animal infection/taming/ability contracts
+- Region/chunk/streaming world contracts
+- Building/destruction persistence contracts
+- Loot tier/container contracts
+- Crafting/workbench contracts
+- Item durability general contracts
+- Vehicle, NPC, mission, economy, weather contracts
+- Save/persistence domain partitioning contracts
+- Multiplayer authority/replication contracts
+- Unity integration port contracts
+
+See:
+- `docs/ARCHITECTURE.md`
+- `docs/PHASE_1_5_MULTIPLAYER_WORLD_ARCHITECTURE.md`
+- `prototypes/core/phase15_contracts.py`
+
 ## Run Prototypes and Tests
 From repository root:
 
@@ -37,10 +60,14 @@ From repository root:
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
-## Planned Next Steps
-- Expand system depth in Phase 2 while preserving modular boundaries.
-- Add richer combat and survival interactions.
-- Implement Unity adapters around established data contracts.
+## What Is Not Implemented Yet
+- Full gameplay implementation for Phase 1.5 systems
+- Full server runtime, transport, and persistence backend
+- Unity gameplay implementation and world streaming runtime
+- Full content authoring for all long-term game datasets
 
-## Unity Integration Strategy
-Core rules are kept engine-independent under `prototypes/core` and data is stored under `/data`. Unity-specific code will live under `/unity` as adapters/wrappers so gameplay logic can be reused or directly ported without tight engine coupling.
+## Recommended Next Step
+**Phase 1.6 — Authoritative Multiplayer Slice**
+- Build a minimal server-authoritative runtime using Phase 1.5 contracts.
+- Validate chunk streaming + persistence on a limited world slice.
+- Connect initial replicated state flows into Unity adapter prototypes.

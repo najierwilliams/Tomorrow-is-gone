@@ -1,44 +1,44 @@
 # Development Roadmap
 
-- **Phase 1 — Foundation**
+- **Phase 1 — Foundation (Implemented)**
   - Establish repository architecture
   - Define core data schemas
   - Implement minimal, testable prototypes for player, survival, inventory, weapons, zombies, loot, progression, and save/load
 
-- **Phase 2 — Core Gameplay**
-  - Player movement and interaction loops
-  - Basic scavenging and resource consumption loop
+- **Phase 1.5 — Multiplayer World Architecture (Designed + Contracted)**
+  - Define architecture contracts for server configuration and multiplayer authority
+  - Define unified human/infected/zombie player-state contracts
+  - Define world region/chunk/streaming contracts for very large persistent maps
+  - Define persistence-domain boundaries (player/world/inventory/structures/destruction/vehicles/NPC/loot/server-config)
+  - Define contract surfaces for animals, loot tiers, crafting/workbenches, durability, vehicles, NPCs, missions, economy, and weather
+  - Document Unity adapter boundaries while keeping gameplay rules engine-independent
 
-- **Phase 3 — Zombie AI**
-  - Per-type behavior profiles and sensory tuning
-  - Group behaviors and encounter logic
+- **Phase 1.6 — Authoritative Multiplayer Slice (Recommended Next)**
+  - Implement a thin server-authoritative runtime over Phase 1.5 contracts
+  - Implement chunk interest management and persistence for a limited map district
+  - Implement one human and one zombie mission end-to-end
+  - Integrate replicated state snapshots into Unity adapter prototypes
 
-- **Phase 4 — Combat**
-  - Ranged/melee expansion
-  - Hit reactions, damage modifiers, and weapon balancing
+- **Phase 2 — Core Gameplay Runtime Expansion**
+  - Expand movement, interactions, scavenging, survival loops on top of authority model
 
-- **Phase 5 — Survival**
-  - Advanced hunger/thirst/fatigue effects
-  - Medical conditions and recovery systems
+- **Phase 3 — AI and Encounter Expansion**
+  - Extend zombie and NPC runtime behaviors with data-driven profiles
 
-- **Phase 6 — World**
-  - Zone metadata, safe/danger areas, day/night systems
-  - Dynamic world events and environmental storytelling hooks
+- **Phase 4 — Combat and Equipment Runtime**
+  - Implement modular combat resolution, durability interactions, and balancing
 
-- **Phase 7 — NPCs and Quests**
-  - Survivor factions, dialogue hooks, mission pipelines
+- **Phase 5 — World and Content Scale-Out**
+  - Expand region streaming, mission content, weather profiles, and economy depth
 
-- **Phase 8 — Progression**
-  - Skill trees/perks and long-term character growth
+- **Phase 6 — Unity Multiplayer Integration**
+  - Productionize Unity-side adapters, transport, prediction/interpolation, and content streaming
 
-- **Phase 9 — Unity Integration**
-  - Unity adapters, ScriptableObject data bridges, runtime integration
+- **Phase 7 — Playable Alpha**
+  - Stable multiplayer vertical slice with persistence and progression
 
-- **Phase 10 — Playable Alpha**
-  - Vertical slice with stable core loop and save progression
+- **Phase 8 — Public Early Build**
+  - External testing, balancing passes, and iterative systems hardening
 
-- **Phase 11 — Public Early Build**
-  - External testing, feedback loops, balancing passes
-
-- **Phase 12 — Post-launch Updates**
-  - Content expansion, optimization, and live updates
+- **Phase 9 — Live Expansion**
+  - Content growth, optimization, and post-launch systems evolution

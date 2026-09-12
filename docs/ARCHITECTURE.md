@@ -1,104 +1,93 @@
-# Tomorrow Is Gone — Phase 1 Architecture
+# Tomorrow Is Gone Architecture
 
-## Goal
-Phase 1 establishes a modular, engine-independent game foundation that can be integrated into Unity later.
+## Current Architecture Phases
 
-## Repository Structure
-- `/docs` — architecture and integration documentation
-- `/design` — high-level design notes and balancing references
-- `/systems` — future long-term gameplay systems (engine-level implementations)
-- `/data` — data-driven definitions (items, loot, balancing values)
-- `/assets` — placeholder and production assets
-- `/tools` — development utilities and content pipelines
-- `/prototypes` — Phase 1 executable prototypes (engine-independent)
-- `/unity` — Unity-specific adapters and integration scripts
-- `/tests` — focused prototype validation tests
+### Phase 1 — Foundation (Implemented)
+Phase 1 provides engine-independent prototype rules in `prototypes/core` and data-driven JSON content in `data/`.
 
-## Layering Model
-- **Engine-independent**: `prototypes/core/*` and `data/*`
-- **Unity-specific**: future adapters under `unity/`
-- **Prototype-only**: current runtime wiring and simplified tuning values in `prototypes/`
+Implemented baseline systems:
+- Player stats and progression (`PlayerStats`)
+- Inventory and item stacking
+- Item and loot data loading
+- Weapon durability prototype behavior
+- Zombie state-machine prototype
+- Save/load JSON snapshot contract
+- Foundational tests for the above systems
 
-## Core System Design (Phase 1)
-### Player System
-- `PlayerStats` stores health, stamina, hunger, thirst, XP, and level.
-- Keeps survival/stat logic centralized and deterministic.
+### Phase 1.5 — Multiplayer World Architecture (Designed + Minimal Contracts)
+Phase 1.5 defines long-term architecture boundaries and data contracts for multiplayer world-scale development without implementing full gameplay systems.
 
-### Zombie System
-- `ZombieEntity` uses explicit states and transitions.
-- Base state model supports extension for future zombie types without rewriting shared logic.
+Implementation level in this phase:
+- Added architecture contracts module: `prototypes/core/phase15_contracts.py`
+- Added architecture-level contract tests: `tests/test_phase15_architecture_contracts.py`
+- Added design document: `docs/PHASE_1_5_MULTIPLAYER_WORLD_ARCHITECTURE.md`
 
-### Inventory System
-- Slot + stack based inventory with add/remove operations.
-- Item handling remains data-driven through item definition IDs.
+Not implemented in this phase:
+- Full gameplay logic for new systems
+- Unity runtime implementation
+- Networking transport implementation
+- Database/back-end implementation
 
-### Item System
-- `ItemDefinition` and `ItemCategory` define item metadata and classification.
-- Loaded from JSON to avoid hard-coded item behavior.
+## Phase 1.5 Layering Model
 
-### Weapon System
-- `WeaponDefinition` + `WeaponInstance` split static data from runtime durability.
-- Supports future weapon variants and balancing via data.
+- **Engine-independent contracts (now):**
+  - Data models and interfaces under `prototypes/core/phase15_contracts.py`
+  - Persistent domain separation contracts
+  - Server configuration and world-grid/chunking contracts
+- **Future Unity-specific adapters:**
+  - Scene/prefab streaming orchestration
+  - MonoBehaviour wrappers and Netcode transport bindings
+  - Client-side interpolation/prediction presentation layers
+- **Future server/runtime implementations:**
+  - Authority logic and synchronization runtime
+  - Persistent storage repositories
+  - Mission/economy/weather/npc runtime controllers
 
-### Health / Damage System
-- `PlayerStats.apply_damage()` and `heal()` define current baseline damage loop.
-- Designed for expansion into armor, status effects, limb damage, and resistances.
+## System Responsibilities and Dependencies (Phase 1.5)
 
-### Survival System
-- Hunger/thirst tracked independently from health.
-- Prototype keeps effects simple and isolated for easier balancing later.
+The complete per-system breakdown for all 20 required systems is documented in:
+- `docs/PHASE_1_5_MULTIPLAYER_WORLD_ARCHITECTURE.md`
 
-### Loot System
-- `LootTable` rolls deterministic drops when supplied with seeded RNG.
-- Enables location-specific tables and rarity tiers in later phases.
+At a high level:
+1. Server architecture owns session authority and system orchestration.
+2. Server configuration injects rules into all gameplay systems.
+3. Player state is unified across human/infected/zombie forms.
+4. Transformation and zombie sanity extend player state rather than forking architecture.
+5. Animal state and abilities are data-driven and shared across normal/infected/tamed variants.
+6. World region/chunk architecture is required for 1:1-scale streaming and persistence.
+7. Building/destruction persist deltas, not full scene state.
+8. Loot/crafting/durability/vehicles/NPC/missions/economy/weather all depend on server config + persistence contracts.
+9. Multiplayer authority/sync defines write ownership and replicated topics.
+10. Unity integration remains an adapter layer over contract-defined systems.
 
-### NPC System
-- Not implemented yet in code.
-- Planned architecture mirrors zombie state-machine approach with role-specific AI modules.
+## Data-Driven Expansion Strategy
 
-### Quest System
-- Not implemented yet in code.
-- Planned as data-defined objectives + progression triggers, decoupled from UI/engine.
+Phase 1.5 architecture expands the contract surface to support:
+- Server configs and custom rules
+- Zombie tiers and sanity
+- Animal infection/taming/abilities
+- Chunked world regions and persistent world edits
+- Structures and destruction records
+- Loot tiers and containers
+- Recipes and workbench requirements
+- Durability state
+- Vehicles, NPCs, missions, economy, weather
+- Explicit persistence-domain partitioning
 
-### World System
-- Not implemented yet in code.
-- Planned as data-driven zones, encounter tables, safe/danger metadata, and world events.
+These are contract-first definitions and are intentionally implementation-light.
 
-### Save / Load System
-- `GameSnapshot` serializes player + inventory structures to JSON.
-- Baseline contract for later Unity persistence and migration logic.
+## Unity Integration Direction
 
-### Progression System
-- XP thresholds and leveling implemented in `PlayerStats.add_experience()`.
-- Minimal formula now, can migrate to configurable progression tables later.
+Unity remains an integration shell around engine-independent rules:
+1. Load contract-driven data from `data/` and server configuration payloads.
+2. Stream world chunks/regions based on server authoritative interest management.
+3. Render and animate entities from replicated state topics.
+4. Keep gameplay decisions in server/core logic rather than scene scripts.
 
-### Future Multiplayer Considerations
-- Keep game rules deterministic and state payloads serializable.
-- Separate authority-sensitive logic (combat, inventory changes) from presentation.
-- Avoid direct engine calls inside core rule modules.
+## Recommended Next Phase
 
-## Zombie State Architecture
-Implemented states:
-- Idle
-- Wander
-- Investigate
-- Detect Player
-- Chase
-- Attack
-- Search
-- Lose Target
-- Return to Wandering
-
-Extension strategy:
-- Keep shared base transitions in core zombie entity.
-- Add per-zombie-type behavior profiles (speed, perception, aggression, armor).
-- Add new state handlers instead of branching the entire AI system.
-
-## Unity Integration Strategy
-1. Keep `prototypes/core` as authoritative gameplay rule reference.
-2. Build Unity-side adapters in `/unity`:
-   - ScriptableObject loaders for `/data`
-   - MonoBehaviour wrappers for player/zombie/inventory runtime events
-   - Save adapters around `GameSnapshot`-compatible schema
-3. Replace prototype event loops with Unity update/tick orchestration while preserving rules.
-4. Add visual/audio/animation layers without moving core business logic into presentation code.
+**Phase 1.6 — Multiplayer Runtime Vertical Slice**
+- Implement a minimal authoritative server loop over selected Phase 1.5 contracts.
+- Implement chunk interest management + persistence for a limited test map.
+- Implement one end-to-end mission path for both human and zombie audiences.
+- Implement Unity adapters for replicated player/world snapshots.
