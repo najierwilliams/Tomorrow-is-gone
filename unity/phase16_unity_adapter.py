@@ -15,6 +15,8 @@ class UnityAuthoritativeView:
     mission_representation: dict = field(default_factory=dict)
     animal_representation: dict = field(default_factory=dict)
     structure_representation: dict = field(default_factory=dict)
+    npc_ai_representation: dict = field(default_factory=dict)
+    perception_representation: list[dict] = field(default_factory=list)
 
 
 class Phase16UnityAdapter(UnityIntegrationPort):
@@ -51,12 +53,18 @@ class Phase16UnityAdapter(UnityIntegrationPort):
             "power": payload.get("power", {}),
             "hordes": payload.get("hordes", {}),
             "npcs": payload.get("npcs", {}),
+            "perception_events": payload.get("perception_events", []),
         }
 
         self.view.inventory_representation = payload.get("inventory", {})
         self.view.mission_representation = payload.get("missions", {})
         self.view.animal_representation = payload.get("animals", {})
         self.view.structure_representation = payload.get("structures", {})
+        self.view.npc_ai_representation = {
+            npc_id: npc_payload.get("ai_state", {})
+            for npc_id, npc_payload in payload.get("npcs", {}).items()
+        }
+        self.view.perception_representation = list(payload.get("perception_events", []))
 
     def pull_input_commands(self) -> list[ClientCommandIntent]:
         intents = list(self._pending_commands)

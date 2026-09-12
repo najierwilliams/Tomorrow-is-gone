@@ -53,6 +53,19 @@ Implementation level in this phase:
 - Expanded deterministic test world with representative entities for core gameplay systems
 - Added comprehensive Phase 2 runtime tests in `tests/test_phase2_core_gameplay_runtime.py`
 
+### Phase 3 — AI and Encounter Expansion (Implemented)
+Phase 3 extends the authoritative runtime with engine-independent AI encounter systems while preserving server authority and Phase 2 stability.
+
+Implementation level in this phase:
+- Added engine-independent AI/navigation contracts and deterministic navigation provider in `prototypes/core/phase3_ai.py`
+- Added data-driven AI balancing configuration in `data/phase3_ai_definitions.json`
+- Extended authoritative runtime with zombie perception (vision/hearing/memory), deterministic target scoring/selection/switching, pursuit abandonment, and dynamic horde grouping/splitting
+- Added player-zombie recruitment catalyst behavior for meaningful hostile encounters (without auto-follow from proximity alone)
+- Added human NPC encounter foundations for threat detection, flee/combat response, and investigate/wander behavior
+- Added chunk-aware AI filtering and required NPC AI persistence state
+- Extended Unity adapter projection to include NPC AI state and perception events
+- Added focused Phase 3 deterministic tests in `tests/test_phase3_ai_encounter_expansion.py`
+
 ## Phase 1.5 Layering Model
 
 - **Engine-independent contracts (now):**
@@ -113,7 +126,7 @@ Unity remains an integration shell around engine-independent rules:
 
 ## Recommended Next Phase
 
-**Phase 3 — AI and Encounter Expansion**
-- Expand advanced zombie/NPC behaviors on top of persisted authoritative entities.
+**Phase 4 — Combat and Equipment Runtime**
+- Expand modular combat depth and equipment balancing over the new encounter AI layer.
 - Continue PS5-first runtime progression while preserving server-authoritative boundaries.
 - Stage production networking/platform concerns for later phases.

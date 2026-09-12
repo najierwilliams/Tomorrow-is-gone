@@ -30,10 +30,14 @@
   - Added server-authoritative inventory usage, equipment, crafting, gathering, gardening, construction, destruction, economy, and power foundations
   - Added persistent animals, infected animal abilities, taming, horde foundations, expanded missions/progression, and chunk-aware replication payloads
 
-- **Phase 3 — AI and Encounter Expansion (Recommended Next)**
-  - Extend zombie and NPC runtime behaviors with data-driven profiles
+- **Phase 3 — AI and Encounter Expansion (Implemented)**
+  - Added engine-independent navigation abstraction and deterministic provider
+  - Added server-authoritative zombie perception, sensory memory, target scoring/switching, pursuit abandonment, and encounter recruitment logic
+  - Added dynamic horde member grouping/splitting by individual NPC target decisions
+  - Added human NPC encounter response foundation (threat detection, flee/combat, investigate/wander)
+  - Added chunk-aware AI evaluation, AI state persistence, and Unity adapter AI/perception projection support
 
-- **Phase 4 — Combat and Equipment Runtime**
+- **Phase 4 — Combat and Equipment Runtime (Recommended Next)**
   - Implement modular combat resolution, durability interactions, and balancing
 
 - **Phase 5 — World and Content Scale-Out**

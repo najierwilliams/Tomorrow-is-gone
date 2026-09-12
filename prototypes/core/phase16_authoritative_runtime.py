@@ -35,6 +35,24 @@ from .phase15_contracts import (
     is_valid_form_transition,
     resolve_zombie_sanity_band,
 )
+from .phase3_ai import (
+    AiPerceptionConfig,
+    DeterministicChunkNavigationProvider,
+    HumanNpcBehaviorConfig,
+    NavigationPathStatus,
+    NavigationProvider,
+    NavigationQuery,
+    NpcAiState,
+    PerceptionMemory,
+    Phase3AiConfig,
+    RecruitmentConfig,
+    SoundEvent,
+    ZombieTargetingConfig,
+    deterministic_roll,
+    distance as ai_distance,
+    facing_towards,
+    move_away,
+)
 from .player import PlayerStats
 
 
@@ -291,6 +309,7 @@ class HordeRuntime:
     horde_id: str
     leader_player_id: str | None = None
     member_player_ids: set[str] = field(default_factory=set)
+    member_npc_ids: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -300,6 +319,18 @@ class NpcRuntime:
     coordinate: WorldCoordinate
     settlement_id: str | None = None
     shop_id: str | None = None
+    ai_state: NpcAiState = field(default_factory=NpcAiState)
+    sensory_memory: dict[str, PerceptionMemory] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class EncounterRuntimeEvent:
+    event_type: str
+    source_id: str
+    target_id: str | None
+    source_position: WorldCoordinate
+    target_position: WorldCoordinate | None
+    tick_index: int
 
 
 @dataclass
@@ -434,6 +465,7 @@ class AuthoritativeServerRuntime:
         data_root: Path | None = None,
         grid_config: WorldGridConfig | None = None,
         interest_radius_chunks: int = 1,
+        navigation_provider: NavigationProvider | None = None,
     ) -> None:
         self.repository = repository
         self.transport = transport
@@ -449,6 +481,7 @@ class AuthoritativeServerRuntime:
         )
         self.interest_radius_chunks = interest_radius_chunks
         self._tick_index = 0
+        self.navigation_provider = navigation_provider or DeterministicChunkNavigationProvider(self.grid_config)
 
         self.server_configuration = ServerConfiguration(
             server_id="phase16-local",
@@ -464,6 +497,15 @@ class AuthoritativeServerRuntime:
         self.world = WorldRuntimeState()
         self.mission_states: dict[str, dict[str, MissionRuntimeState]] = {}
         self.command_results: list[dict] = []
+        self.sound_events: list[SoundEvent] = []
+        self.recent_encounter_events: list[EncounterRuntimeEvent] = []
+        self.latest_perception_events: list[dict] = []
+        self.allowed_player_sound_events: dict[str, float] = {
+            "footstep": 0.25,
+            "gunshot": 1.0,
+            "shout": 0.7,
+            "impact": 0.5,
+        }
 
         self._instance_counter = 0
 
@@ -503,8 +545,42 @@ class AuthoritativeServerRuntime:
             zombie_sleep_heal_per_tick=4.0,
             food_degrade_per_tick=1.0,
         )
+        self.phase3_ai_config = Phase3AiConfig(
+            perception=AiPerceptionConfig(
+                vision_range=28.0,
+                vision_angle_degrees=140.0,
+                hearing_range=36.0,
+                hearing_min_strength=0.2,
+                memory_ticks=12,
+            ),
+            zombie_targeting=ZombieTargetingConfig(
+                visibility_weight=4.0,
+                distance_weight=2.2,
+                sound_weight=1.6,
+                memory_weight=1.3,
+                current_target_bonus=1.5,
+                retarget_threshold=2.2,
+                retarget_cooldown_ticks=2,
+                target_persistence_ticks=4,
+                pursuit_timeout_ticks=8,
+                minimum_target_score=1.2,
+            ),
+            recruitment=RecruitmentConfig(
+                enabled_event_types=("zombie_attack_human", "zombie_npc_attack_human"),
+                distance=22.0,
+                probability=0.65,
+                cooldown_ticks=3,
+            ),
+            human_npc=HumanNpcBehaviorConfig(
+                threat_range=24.0,
+                flee_distance=6.0,
+                combat_preference=0.25,
+            ),
+            chunk_awareness_radius=1,
+        )
 
         self._load_phase2_definitions()
+        self._load_phase3_definitions()
         self._build_test_world()
 
     def _load_phase2_definitions(self) -> None:
@@ -714,6 +790,99 @@ class AuthoritativeServerRuntime:
                 food_degrade_per_tick=float(survival["food_degrade_per_tick"]),
             )
 
+    def _load_phase3_definitions(self) -> None:
+        path = self.data_root / "phase3_ai_definitions.json"
+        if not path.exists():
+            return
+        payload = json.loads(path.read_text()).get("ai", {})
+        if not payload:
+            return
+
+        self.phase3_ai_config = Phase3AiConfig(
+            perception=AiPerceptionConfig(
+                vision_range=float(payload.get("perception", {}).get("vision_range", self.phase3_ai_config.perception.vision_range)),
+                vision_angle_degrees=float(
+                    payload.get("perception", {}).get(
+                        "vision_angle_degrees", self.phase3_ai_config.perception.vision_angle_degrees
+                    )
+                ),
+                hearing_range=float(payload.get("perception", {}).get("hearing_range", self.phase3_ai_config.perception.hearing_range)),
+                hearing_min_strength=float(
+                    payload.get("perception", {}).get(
+                        "hearing_min_strength", self.phase3_ai_config.perception.hearing_min_strength
+                    )
+                ),
+                memory_ticks=int(payload.get("perception", {}).get("memory_ticks", self.phase3_ai_config.perception.memory_ticks)),
+            ),
+            zombie_targeting=ZombieTargetingConfig(
+                visibility_weight=float(
+                    payload.get("zombie_targeting", {}).get(
+                        "visibility_weight", self.phase3_ai_config.zombie_targeting.visibility_weight
+                    )
+                ),
+                distance_weight=float(
+                    payload.get("zombie_targeting", {}).get("distance_weight", self.phase3_ai_config.zombie_targeting.distance_weight)
+                ),
+                sound_weight=float(
+                    payload.get("zombie_targeting", {}).get("sound_weight", self.phase3_ai_config.zombie_targeting.sound_weight)
+                ),
+                memory_weight=float(
+                    payload.get("zombie_targeting", {}).get("memory_weight", self.phase3_ai_config.zombie_targeting.memory_weight)
+                ),
+                current_target_bonus=float(
+                    payload.get("zombie_targeting", {}).get(
+                        "current_target_bonus", self.phase3_ai_config.zombie_targeting.current_target_bonus
+                    )
+                ),
+                retarget_threshold=float(
+                    payload.get("zombie_targeting", {}).get(
+                        "retarget_threshold", self.phase3_ai_config.zombie_targeting.retarget_threshold
+                    )
+                ),
+                retarget_cooldown_ticks=int(
+                    payload.get("zombie_targeting", {}).get(
+                        "retarget_cooldown_ticks", self.phase3_ai_config.zombie_targeting.retarget_cooldown_ticks
+                    )
+                ),
+                target_persistence_ticks=int(
+                    payload.get("zombie_targeting", {}).get(
+                        "target_persistence_ticks", self.phase3_ai_config.zombie_targeting.target_persistence_ticks
+                    )
+                ),
+                pursuit_timeout_ticks=int(
+                    payload.get("zombie_targeting", {}).get(
+                        "pursuit_timeout_ticks", self.phase3_ai_config.zombie_targeting.pursuit_timeout_ticks
+                    )
+                ),
+                minimum_target_score=float(
+                    payload.get("zombie_targeting", {}).get(
+                        "minimum_target_score", self.phase3_ai_config.zombie_targeting.minimum_target_score
+                    )
+                ),
+            ),
+            recruitment=RecruitmentConfig(
+                enabled_event_types=tuple(payload.get("recruitment", {}).get("enabled_event_types", []))
+                or self.phase3_ai_config.recruitment.enabled_event_types,
+                distance=float(payload.get("recruitment", {}).get("distance", self.phase3_ai_config.recruitment.distance)),
+                probability=float(payload.get("recruitment", {}).get("probability", self.phase3_ai_config.recruitment.probability)),
+                cooldown_ticks=int(
+                    payload.get("recruitment", {}).get("cooldown_ticks", self.phase3_ai_config.recruitment.cooldown_ticks)
+                ),
+            ),
+            human_npc=HumanNpcBehaviorConfig(
+                threat_range=float(payload.get("human_npc", {}).get("threat_range", self.phase3_ai_config.human_npc.threat_range)),
+                flee_distance=float(payload.get("human_npc", {}).get("flee_distance", self.phase3_ai_config.human_npc.flee_distance)),
+                combat_preference=float(
+                    payload.get("human_npc", {}).get("combat_preference", self.phase3_ai_config.human_npc.combat_preference)
+                ),
+            ),
+            chunk_awareness_radius=int(payload.get("chunk_awareness_radius", self.phase3_ai_config.chunk_awareness_radius)),
+        )
+        self.allowed_player_sound_events = {
+            str(event_type): float(strength)
+            for event_type, strength in payload.get("allowed_player_sound_events", self.allowed_player_sound_events).items()
+        }
+
     def _build_test_world(self) -> None:
         container_defs = [
             LootContainerRuntime(
@@ -896,11 +1065,16 @@ class AuthoritativeServerRuntime:
 
     def process_tick(self) -> None:
         self.command_results.clear()
+        self.latest_perception_events = []
         for intent in self.transport.drain_command_intents():
             self._apply_intent(intent)
 
         self._apply_survival_tick()
         self._update_world_systems()
+        self.sound_events = [event for event in self.sound_events if self._tick_index - event.tick_index <= 3]
+        self.recent_encounter_events = [
+            event for event in self.recent_encounter_events if self._tick_index - event.tick_index <= 6
+        ]
         self._refresh_chunk_interest()
         self._replicate_state()
         self._tick_index += 1
@@ -1023,6 +1197,7 @@ class AuthoritativeServerRuntime:
                     "horde_id": horde.horde_id,
                     "leader_player_id": horde.leader_player_id,
                     "member_player_ids": sorted(horde.member_player_ids),
+                    "member_npc_ids": sorted(horde.member_npc_ids),
                 }
                 for horde_id, horde in self.world.hordes.items()
             },
@@ -1052,6 +1227,19 @@ class AuthoritativeServerRuntime:
                     "coordinate": asdict(npc.coordinate),
                     "settlement_id": npc.settlement_id,
                     "shop_id": npc.shop_id,
+                    "ai_state": asdict(npc.ai_state),
+                    "sensory_memory": {
+                        memory_id: {
+                            "target_id": memory.target_id,
+                            "target_type": memory.target_type,
+                            "last_known_position": asdict(memory.last_known_position),
+                            "last_seen_tick": memory.last_seen_tick,
+                            "last_heard_tick": memory.last_heard_tick,
+                            "confidence": memory.confidence,
+                            "reason": memory.reason,
+                        }
+                        for memory_id, memory in npc.sensory_memory.items()
+                    },
                 }
                 for npc_id, npc in self.world.npcs.items()
             },
@@ -1228,6 +1416,7 @@ class AuthoritativeServerRuntime:
                 horde_id=payload["horde_id"],
                 leader_player_id=payload.get("leader_player_id"),
                 member_player_ids=set(payload.get("member_player_ids", [])),
+                member_npc_ids=set(payload.get("member_npc_ids", [])),
             )
 
         for source_id, payload in world_payload.get("power_sources", {}).items():
@@ -1268,6 +1457,19 @@ class AuthoritativeServerRuntime:
                     coordinate=WorldCoordinate(**payload["coordinate"]),
                     settlement_id=payload.get("settlement_id"),
                     shop_id=payload.get("shop_id"),
+                    ai_state=NpcAiState(**payload.get("ai_state", {})),
+                    sensory_memory={
+                        memory_id: PerceptionMemory(
+                            target_id=memory["target_id"],
+                            target_type=memory["target_type"],
+                            last_known_position=WorldCoordinate(**memory["last_known_position"]),
+                            last_seen_tick=memory.get("last_seen_tick"),
+                            last_heard_tick=memory.get("last_heard_tick"),
+                            confidence=float(memory.get("confidence", 0.0)),
+                            reason=memory.get("reason", ""),
+                        )
+                        for memory_id, memory in payload.get("sensory_memory", {}).items()
+                    },
                 )
                 for npc_id, payload in npc_payload.items()
             }
@@ -1352,6 +1554,7 @@ class AuthoritativeServerRuntime:
             "zombie.sleep": self._handle_zombie_sleep,
             "player.inventory_action": self._handle_inventory_action,
             "player.use_item": self._handle_use_item,
+            "player.emit_sound": self._handle_emit_sound,
             "player.equip": self._handle_equip,
             "mission.accept": self._handle_mission_accept,
             "crafting.start": self._handle_crafting,
@@ -1520,6 +1723,28 @@ class AuthoritativeServerRuntime:
 
         return False, "item_not_usable"
 
+    def _handle_emit_sound(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
+        event_type = payload.get("event_type")
+        if not isinstance(event_type, str):
+            return False, "missing_event_type"
+        configured_strength = self.allowed_player_sound_events.get(event_type)
+        if configured_strength is None:
+            return False, "sound_event_not_allowed"
+
+        position = player.human_state.position
+        self.sound_events.append(
+            SoundEvent(
+                event_id=f"sound_{self._tick_index}_{player.state.player_id}_{event_type}",
+                source_entity_id=player.state.player_id,
+                source_entity_type="player",
+                event_type=event_type,
+                position=position,
+                strength=configured_strength,
+                tick_index=self._tick_index,
+            )
+        )
+        return True, "ok"
+
     def _handle_equip(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
         action = payload.get("action", "equip")
         item_id = payload.get("item_id")
@@ -1579,8 +1804,10 @@ class AuthoritativeServerRuntime:
                 return False, "no_attack_capability"
             damage = self._resolve_attack_damage(player, payload)
             mitigated = self._apply_armor_and_damage(target, damage)
+            attack_event_type = "human_attack_human"
             if player.state.form == PlayerForm.ZOMBIE:
                 infect = bool(payload.get("attempt_infect", False))
+                attack_event_type = "zombie_attack_human"
                 if infect and target.state.form == PlayerForm.HUMAN and mitigated > 0:
                     target.state = PlayerStateModel(
                         player_id=target.state.player_id,
@@ -1588,6 +1815,39 @@ class AuthoritativeServerRuntime:
                         infection_progress=max(0.15, target.state.infection_progress),
                         zombie_sanity=None,
                     )
+                self.sound_events.append(
+                    SoundEvent(
+                        event_id=f"sound_{self._tick_index}_{player.state.player_id}_impact",
+                        source_entity_id=player.state.player_id,
+                        source_entity_type="player",
+                        event_type="impact",
+                        position=player.human_state.position,
+                        strength=self.allowed_player_sound_events.get("impact", 0.5),
+                        tick_index=self._tick_index,
+                    )
+                )
+            else:
+                self.sound_events.append(
+                    SoundEvent(
+                        event_id=f"sound_{self._tick_index}_{player.state.player_id}_gunshot",
+                        source_entity_id=player.state.player_id,
+                        source_entity_type="player",
+                        event_type="gunshot",
+                        position=player.human_state.position,
+                        strength=self.allowed_player_sound_events.get("gunshot", 1.0),
+                        tick_index=self._tick_index,
+                    )
+                )
+            self.recent_encounter_events.append(
+                EncounterRuntimeEvent(
+                    event_type=attack_event_type,
+                    source_id=player.state.player_id,
+                    target_id=target.state.player_id,
+                    source_position=player.human_state.position,
+                    target_position=target.human_state.position,
+                    tick_index=self._tick_index,
+                )
+            )
             self._record_progression(player, xp_gain=8)
             return True, "ok"
 
@@ -2180,6 +2440,357 @@ class AuthoritativeServerRuntime:
                 plot.growth_ticks += 1
 
         self._update_power_state()
+        self._update_npc_ai()
+
+    def _update_npc_ai(self) -> None:
+        for npc in self.world.npcs.values():
+            npc.ai_state.current_chunk_key = self.chunk_key(self.grid_config.to_chunk_address(npc.coordinate))
+            if npc.npc_type == "npc_zombie":
+                self._update_zombie_npc_ai(npc)
+            elif npc.npc_type == "npc_human":
+                self._update_human_npc_ai(npc)
+        self._refresh_dynamic_hordes()
+
+    def _update_zombie_npc_ai(self, npc: NpcRuntime) -> None:
+        candidate_targets = self._candidate_human_targets_for_npc(npc)
+        candidate_scores: dict[str, float] = {}
+        candidate_types: dict[str, str] = {}
+        current_target_id = npc.ai_state.primary_target_id
+        current_target_score = 0.0
+
+        for target_id, target_type, coordinate in candidate_targets:
+            target_score, visible = self._score_zombie_target(npc, target_id, target_type, coordinate)
+            if target_score <= 0.0:
+                continue
+            candidate_scores[target_id] = target_score
+            candidate_types[target_id] = target_type
+            if visible:
+                npc.ai_state.last_visible_tick = self._tick_index
+                npc.ai_state.behavior_state = "chase"
+                self._store_memory(npc, target_id, target_type, coordinate, seen=True, reason="vision")
+
+        self._apply_recruitment_events(npc, candidate_scores, candidate_types)
+
+        if candidate_scores:
+            best_target = max(candidate_scores.items(), key=lambda item: (item[1], item[0]))
+            selected_target_id, selected_score = best_target
+            if selected_score >= self.phase3_ai_config.zombie_targeting.minimum_target_score:
+                if current_target_id is None:
+                    self._set_npc_target(npc, selected_target_id, candidate_types[selected_target_id], selected_score)
+                else:
+                    current_target_score = candidate_scores.get(current_target_id, 0.0)
+                    if selected_target_id == current_target_id:
+                        npc.ai_state.target_locked_until_tick = max(
+                            npc.ai_state.target_locked_until_tick,
+                            self._tick_index + self.phase3_ai_config.zombie_targeting.target_persistence_ticks,
+                        )
+                    elif self._can_switch_target(npc, selected_score, current_target_score):
+                        self._set_npc_target(npc, selected_target_id, candidate_types[selected_target_id], selected_score)
+
+        self._evaluate_pursuit(npc)
+
+    def _update_human_npc_ai(self, npc: NpcRuntime) -> None:
+        nearest_zombie: tuple[str, WorldCoordinate, float] | None = None
+        for player_id, player in self.players.items():
+            if player.state.form != PlayerForm.ZOMBIE:
+                continue
+            if not self._entity_in_relevant_chunks(npc.coordinate, player.human_state.position):
+                continue
+            dist = ai_distance(npc.coordinate, player.human_state.position)
+            if dist <= self.phase3_ai_config.human_npc.threat_range and (nearest_zombie is None or dist < nearest_zombie[2]):
+                nearest_zombie = (player_id, player.human_state.position, dist)
+        for other in self.world.npcs.values():
+            if other.npc_id == npc.npc_id or other.npc_type != "npc_zombie":
+                continue
+            if not self._entity_in_relevant_chunks(npc.coordinate, other.coordinate):
+                continue
+            dist = ai_distance(npc.coordinate, other.coordinate)
+            if dist <= self.phase3_ai_config.human_npc.threat_range and (nearest_zombie is None or dist < nearest_zombie[2]):
+                nearest_zombie = (other.npc_id, other.coordinate, dist)
+
+        if nearest_zombie is None:
+            heard = self._latest_heard_sound(npc)
+            if heard is not None:
+                npc.ai_state.behavior_state = "investigate"
+                npc.ai_state.primary_target_id = heard.source_entity_id
+                npc.ai_state.primary_target_type = heard.source_entity_type
+                self._store_memory(
+                    npc,
+                    heard.source_entity_id,
+                    heard.source_entity_type,
+                    heard.position,
+                    heard=True,
+                    reason=f"sound:{heard.event_type}",
+                )
+            else:
+                npc.ai_state.behavior_state = "wander"
+                npc.ai_state.primary_target_id = None
+                npc.ai_state.primary_target_type = None
+            return
+
+        target_id, target_position, _ = nearest_zombie
+        combat_roll = deterministic_roll(f"human_npc_behavior:{npc.npc_id}:{self._tick_index}")
+        npc.ai_state.primary_target_id = target_id
+        npc.ai_state.primary_target_type = "zombie"
+        if combat_roll <= self.phase3_ai_config.human_npc.combat_preference:
+            npc.ai_state.behavior_state = "combat"
+        else:
+            npc.ai_state.behavior_state = "flee"
+            npc.coordinate = move_away(npc.coordinate, target_position, self.phase3_ai_config.human_npc.flee_distance)
+
+    def _apply_recruitment_events(
+        self,
+        npc: NpcRuntime,
+        candidate_scores: dict[str, float],
+        candidate_types: dict[str, str],
+    ) -> None:
+        config = self.phase3_ai_config.recruitment
+        if self._tick_index - npc.ai_state.last_recruitment_tick < config.cooldown_ticks:
+            return
+        for event in self.recent_encounter_events:
+            if event.event_type not in config.enabled_event_types:
+                continue
+            if ai_distance(npc.coordinate, event.source_position) > config.distance:
+                continue
+            if event.target_id is None or event.target_position is None:
+                continue
+            if not self._entity_in_relevant_chunks(npc.coordinate, event.target_position):
+                continue
+            roll = deterministic_roll(f"recruit:{npc.npc_id}:{event.target_id}:{event.tick_index}")
+            if roll > config.probability:
+                continue
+            candidate_scores[event.target_id] = max(candidate_scores.get(event.target_id, 0.0), config.probability * 10.0)
+            candidate_types[event.target_id] = "human"
+            npc.ai_state.last_recruitment_tick = self._tick_index
+            self.latest_perception_events.append(
+                {
+                    "npc_id": npc.npc_id,
+                    "event": "recruited",
+                    "target_id": event.target_id,
+                    "source_id": event.source_id,
+                }
+            )
+
+    def _candidate_human_targets_for_npc(self, npc: NpcRuntime) -> list[tuple[str, str, WorldCoordinate]]:
+        candidates: list[tuple[str, str, WorldCoordinate]] = []
+        for player_id, player in self.players.items():
+            if player.state.form == PlayerForm.ZOMBIE:
+                continue
+            if player.human_state.dead:
+                continue
+            if not self._entity_in_relevant_chunks(npc.coordinate, player.human_state.position):
+                continue
+            candidates.append((player_id, "player_human", player.human_state.position))
+        for other in self.world.npcs.values():
+            if other.npc_id == npc.npc_id or other.npc_type != "npc_human":
+                continue
+            if not self._entity_in_relevant_chunks(npc.coordinate, other.coordinate):
+                continue
+            candidates.append((other.npc_id, "npc_human", other.coordinate))
+        return candidates
+
+    def _score_zombie_target(self, npc: NpcRuntime, target_id: str, target_type: str, coordinate: WorldCoordinate) -> tuple[float, bool]:
+        perception = self.phase3_ai_config.perception
+        targeting = self.phase3_ai_config.zombie_targeting
+        d = ai_distance(npc.coordinate, coordinate)
+        if d > max(perception.vision_range, perception.hearing_range):
+            return 0.0, False
+
+        visible = d <= perception.vision_range and facing_towards(
+            npc.coordinate,
+            coordinate,
+            perception.vision_angle_degrees,
+        ) and not self._is_obstructed(npc.coordinate, coordinate)
+
+        score = 0.0
+        if visible:
+            score += targeting.visibility_weight
+
+        score += targeting.distance_weight / max(1.0, d)
+
+        heard_strength = self._sound_strength_for_target(npc, target_id)
+        if heard_strength >= perception.hearing_min_strength:
+            score += targeting.sound_weight * heard_strength
+            self._store_memory(npc, target_id, target_type, coordinate, heard=True, reason="sound")
+
+        memory = npc.sensory_memory.get(target_id)
+        if memory is not None:
+            age = self._tick_index - max(memory.last_seen_tick or -9999, memory.last_heard_tick or -9999)
+            if age <= perception.memory_ticks:
+                score += targeting.memory_weight * max(0.0, memory.confidence - (age * 0.05))
+            else:
+                npc.sensory_memory.pop(target_id, None)
+
+        if npc.ai_state.primary_target_id == target_id:
+            score += targeting.current_target_bonus
+        return score, visible
+
+    def _evaluate_pursuit(self, npc: NpcRuntime) -> None:
+        target_id = npc.ai_state.primary_target_id
+        if target_id is None:
+            if npc.ai_state.behavior_state not in {"investigate", "search"}:
+                npc.ai_state.behavior_state = "wander"
+            npc.ai_state.horde_id = None
+            return
+
+        target_position = self._resolve_entity_position(target_id)
+        if target_position is None:
+            self._abandon_target(npc, "target_missing")
+            return
+
+        navigation = self.navigation_provider.query_path(
+            NavigationQuery(
+                agent_id=npc.npc_id,
+                start=npc.coordinate,
+                destination=target_position,
+                required_chunk_keys=tuple(self._neighbor_chunk_keys(npc.coordinate)),
+            )
+        )
+        npc.ai_state.last_navigation_status = navigation.status.value
+        npc.ai_state.last_path_chunk_keys = list(navigation.traversed_chunk_keys)
+        if navigation.status in {NavigationPathStatus.UNAVAILABLE, NavigationPathStatus.UNREACHABLE}:
+            self._abandon_target(npc, navigation.reason or "navigation_failed")
+            return
+
+        last_seen = npc.ai_state.last_visible_tick
+        if self._tick_index - last_seen > self.phase3_ai_config.zombie_targeting.pursuit_timeout_ticks:
+            self._abandon_target(npc, "pursuit_timeout")
+            return
+
+        npc.ai_state.behavior_state = "chase"
+        npc.ai_state.horde_id = f"horde_target_{target_id}"
+
+    def _can_switch_target(self, npc: NpcRuntime, candidate_score: float, current_score: float) -> bool:
+        targeting = self.phase3_ai_config.zombie_targeting
+        if self._tick_index < npc.ai_state.target_locked_until_tick:
+            return False
+        if self._tick_index - npc.ai_state.last_target_switch_tick < targeting.retarget_cooldown_ticks:
+            return False
+        return candidate_score >= current_score + targeting.retarget_threshold
+
+    def _set_npc_target(self, npc: NpcRuntime, target_id: str, target_type: str, score: float) -> None:
+        npc.ai_state.primary_target_id = target_id
+        npc.ai_state.primary_target_type = target_type
+        npc.ai_state.last_target_switch_tick = self._tick_index
+        npc.ai_state.target_locked_until_tick = self._tick_index + self.phase3_ai_config.zombie_targeting.target_persistence_ticks
+        npc.ai_state.behavior_state = "chase"
+        self.latest_perception_events.append(
+            {
+                "npc_id": npc.npc_id,
+                "event": "target_selected",
+                "target_id": target_id,
+                "score": round(score, 3),
+            }
+        )
+
+    def _abandon_target(self, npc: NpcRuntime, reason: str) -> None:
+        npc.ai_state.primary_target_id = None
+        npc.ai_state.primary_target_type = None
+        npc.ai_state.behavior_state = "search"
+        npc.ai_state.horde_id = None
+        npc.ai_state.last_abandon_tick = self._tick_index
+        npc.ai_state.target_lost_tick = self._tick_index
+        self.latest_perception_events.append({"npc_id": npc.npc_id, "event": "target_abandoned", "reason": reason})
+
+    def _store_memory(
+        self,
+        npc: NpcRuntime,
+        target_id: str,
+        target_type: str,
+        position: WorldCoordinate,
+        *,
+        seen: bool = False,
+        heard: bool = False,
+        reason: str = "",
+    ) -> None:
+        memory = npc.sensory_memory.get(target_id)
+        if memory is None:
+            memory = PerceptionMemory(target_id=target_id, target_type=target_type, last_known_position=position)
+            npc.sensory_memory[target_id] = memory
+        memory.last_known_position = position
+        if seen:
+            memory.last_seen_tick = self._tick_index
+        if heard:
+            memory.last_heard_tick = self._tick_index
+        memory.confidence = min(1.0, max(memory.confidence, 0.45) + (0.35 if seen else 0.2 if heard else 0.0))
+        memory.reason = reason
+
+    def _latest_heard_sound(self, npc: NpcRuntime) -> SoundEvent | None:
+        hearing_range = self.phase3_ai_config.perception.hearing_range
+        heard_events = [
+            event
+            for event in self.sound_events
+            if ai_distance(npc.coordinate, event.position) <= hearing_range
+            and event.strength >= self.phase3_ai_config.perception.hearing_min_strength
+        ]
+        if not heard_events:
+            return None
+        return sorted(heard_events, key=lambda event: (event.tick_index, event.event_id), reverse=True)[0]
+
+    def _sound_strength_for_target(self, npc: NpcRuntime, target_id: str) -> float:
+        heard = [
+            event
+            for event in self.sound_events
+            if event.source_entity_id == target_id
+            and ai_distance(npc.coordinate, event.position) <= self.phase3_ai_config.perception.hearing_range
+        ]
+        if not heard:
+            return 0.0
+        strongest = max(
+            event.strength / max(1.0, ai_distance(npc.coordinate, event.position))
+            for event in heard
+        )
+        return strongest * 8.0
+
+    def _resolve_entity_position(self, entity_id: str) -> WorldCoordinate | None:
+        player = self.players.get(entity_id)
+        if player is not None:
+            return player.human_state.position
+        npc = self.world.npcs.get(entity_id)
+        if npc is not None:
+            return npc.coordinate
+        return None
+
+    def _is_obstructed(self, start: WorldCoordinate, end: WorldCoordinate) -> bool:
+        for structure in self.world.structures.values():
+            if structure.state == "destroyed":
+                continue
+            if self._distance(start, structure.coordinate) > 1.0 and self._distance(end, structure.coordinate) > 1.0:
+                cross = abs((end.x - start.x) * (structure.coordinate.z - start.z) - (end.z - start.z) * (structure.coordinate.x - start.x))
+                line_len = max(self._distance(start, end), 1.0)
+                if cross / line_len <= 1.0:
+                    return True
+        return False
+
+    def _entity_in_relevant_chunks(self, source: WorldCoordinate, target: WorldCoordinate) -> bool:
+        source_chunk = self.grid_config.to_chunk_address(source)
+        target_chunk = self.grid_config.to_chunk_address(target)
+        radius = self.phase3_ai_config.chunk_awareness_radius
+        return (
+            abs(source_chunk.chunk_x - target_chunk.chunk_x) <= radius
+            and abs(source_chunk.chunk_y - target_chunk.chunk_y) <= radius
+            and abs(source_chunk.chunk_z - target_chunk.chunk_z) <= radius
+        )
+
+    def _neighbor_chunk_keys(self, coordinate: WorldCoordinate) -> list[str]:
+        center = self.grid_config.to_chunk_address(coordinate)
+        radius = self.phase3_ai_config.chunk_awareness_radius
+        keys: list[str] = []
+        for offset_x in range(-radius, radius + 1):
+            for offset_z in range(-radius, radius + 1):
+                keys.append(f"{center.chunk_x + offset_x}:{center.chunk_y}:{center.chunk_z + offset_z}")
+        return keys
+
+    def _refresh_dynamic_hordes(self) -> None:
+        for horde in self.world.hordes.values():
+            horde.member_npc_ids.clear()
+        for npc in self.world.npcs.values():
+            if npc.npc_type != "npc_zombie" or npc.ai_state.primary_target_id is None:
+                continue
+            horde_id = npc.ai_state.horde_id or f"horde_target_{npc.ai_state.primary_target_id}"
+            horde = self.world.hordes.setdefault(horde_id, HordeRuntime(horde_id=horde_id))
+            horde.member_npc_ids.add(npc.npc_id)
+            npc.ai_state.horde_id = horde_id
 
     def _update_power_state(self) -> None:
         generation_by_group: dict[str, float] = {}
@@ -2473,6 +3084,7 @@ class AuthoritativeServerRuntime:
                     horde_id: {
                         "leader_player_id": horde.leader_player_id,
                         "member_player_ids": sorted(horde.member_player_ids),
+                        "member_npc_ids": sorted(horde.member_npc_ids),
                     }
                     for horde_id, horde in self.world.hordes.items()
                 },
@@ -2486,9 +3098,23 @@ class AuthoritativeServerRuntime:
                         "position": asdict(npc.coordinate),
                         "settlement_id": npc.settlement_id,
                         "shop_id": npc.shop_id,
+                        "ai_state": asdict(npc.ai_state),
+                        "sensory_memory": {
+                            memory_id: {
+                                "target_id": memory.target_id,
+                                "target_type": memory.target_type,
+                                "last_known_position": asdict(memory.last_known_position),
+                                "last_seen_tick": memory.last_seen_tick,
+                                "last_heard_tick": memory.last_heard_tick,
+                                "confidence": memory.confidence,
+                                "reason": memory.reason,
+                            }
+                            for memory_id, memory in npc.sensory_memory.items()
+                        },
                     }
                     for npc_id, npc in self.world.npcs.items()
                 },
+                "perception_events": list(self.latest_perception_events),
             }
             self.transport.push_snapshot(player_id, payload)
 
