@@ -1,5 +1,8 @@
 # Development Roadmap
 
+- **Platform Target**
+  - PlayStation 5 exclusive
+
 - **Phase 1 — Foundation (Implemented)**
   - Establish repository architecture
   - Define core data schemas
@@ -8,12 +11,15 @@
 - **Phase 1.5 — Multiplayer World Architecture (Designed + Contracted)**
   - Define architecture contracts for server configuration and multiplayer authority
   - Define unified human/infected/zombie player-state contracts
-  - Define world region/chunk/streaming contracts for very large persistent maps
+  - Define world region/chunk/streaming contracts for very large persistent maps with configurable finite vertical range
   - Define persistence-domain boundaries (player/world/inventory/structures/destruction/vehicles/NPC/loot/server-config)
+  - Define zombie sanity bands for data-driven behavioral consequence mapping
+  - Define cure-gated human reversion contracts for infected/zombie forms
   - Define contract surfaces for animals, loot tiers, crafting/workbenches, durability, vehicles, NPCs, missions, economy, and weather
   - Document Unity adapter boundaries while keeping gameplay rules engine-independent
 
 - **Phase 1.6 — Authoritative Multiplayer Slice (Recommended Next)**
+  - Not implemented yet in this architecture-hardening pass
   - Implement a thin server-authoritative runtime over Phase 1.5 contracts
   - Implement chunk interest management and persistence for a limited map district
   - Implement one human and one zombie mission end-to-end

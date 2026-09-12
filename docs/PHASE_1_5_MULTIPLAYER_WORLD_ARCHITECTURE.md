@@ -2,6 +2,8 @@
 
 This phase defines architecture and contracts required to safely scale toward a persistent multiplayer open world (including 1:1-scale city maps) without prematurely implementing full gameplay systems.
 
+Platform target: **PlayStation 5 exclusive**.
+
 ## Architectural Principles
 - Contract-first, implementation-light.
 - Engine-independent core models and interfaces.
@@ -48,15 +50,15 @@ This phase defines architecture and contracts required to safely scale toward a 
 - **Responsibility:** progression/cure state machine without splitting player model.
 - **Core data:** `PlayerForm`, `infection_progress` in `PlayerStateModel`.
 - **Interfaces/contracts:** `is_valid_form_transition(...)`.
-- **Engine-independent:** transition rules.
+- **Engine-independent:** transition rules with cure-gated return to `HUMAN` from `INFECTED_HUMAN` and `ZOMBIE`.
 - **Unity-specific:** cinematic and visual transformation effects.
 - **Dependencies:** player state, sanity, cure mission/economy systems.
 
 ## 5) Zombie Sanity Architecture
 - **Responsibility:** zombie mental-state resource affecting behavior tuning.
-- **Core data:** `ZombieSanityState`, `ZombieTierDefinition`.
-- **Interfaces/contracts:** sanity delta application.
-- **Engine-independent:** value constraints and tier metadata.
+- **Core data:** `ZombieSanityState`, `ZombieTierDefinition`, `ZombieSanityBandDefinition`.
+- **Interfaces/contracts:** sanity delta application + sanity-band resolution.
+- **Engine-independent:** value constraints, tier metadata, and data-driven sanity-band consequence metadata (coexistence, hostility, cure eligibility, mission availability, behavior tags).
 - **Unity-specific:** post-processing, audio distortion, feedback FX.
 - **Dependencies:** transformation, missions, feeding/combat systems.
 
@@ -80,7 +82,7 @@ This phase defines architecture and contracts required to safely scale toward a 
 - **Responsibility:** scalable world partitioning for large maps.
 - **Core data:** `WorldCoordinate`, `ChunkAddress`, `WorldGridConfig`.
 - **Interfaces/contracts:** `WorldChunkStream.required_chunks_for_player`.
-- **Engine-independent:** coordinate partitioning and interest contracts.
+- **Engine-independent:** coordinate partitioning and interest contracts, including configurable finite vertical world bounds (not unlimited) comparable to large Minecraft-style finite limits, with above-ground, underground, and underwater layering support.
 - **Unity-specific:** additive scene streaming, LOD object activation.
 - **Dependencies:** persistence, authority/sync, vehicles, NPC spawning.
 
@@ -95,8 +97,8 @@ This phase defines architecture and contracts required to safely scale toward a 
 ## 10) Loot and Container Tier Architecture
 - **Responsibility:** controlled randomized loot by container/tier and region rules.
 - **Core data:** `LootTierDefinition`, `LootContainerDefinition`.
-- **Interfaces/contracts:** loot generation service contract (future runtime).
-- **Engine-independent:** tier/container schema.
+- **Interfaces/contracts:** loot generation service contract (future runtime) over `container -> container tier -> eligible loot pools`.
+- **Engine-independent:** tier/container schema including eligible categories and quality-level boundaries per tier.
 - **Unity-specific:** container interactables and loot UI.
 - **Dependencies:** economy balance, persistence, server config.
 
@@ -175,9 +177,9 @@ This phase defines architecture and contracts required to safely scale toward a 
 
 ## 19) Multiplayer Authority/Synchronization Architecture
 - **Responsibility:** define who can write what and what replicates.
-- **Core data:** `AuthorityRole`, `ReplicationRule`.
-- **Interfaces/contracts:** replicated topic channels and authority checks.
-- **Engine-independent:** authority policy.
+- **Core data:** `AuthorityRole`, `ReplicationRule`, `ClientCommandIntent`.
+- **Interfaces/contracts:** replicated topic channels, authority checks, and client command-intent ingestion.
+- **Engine-independent:** server-authoritative state policy with client-intent command flow.
 - **Unity-specific:** transport serialization, interpolation, prediction UX.
 - **Dependencies:** server architecture, chunk streaming, entity systems.
 
@@ -207,6 +209,7 @@ This phase defines architecture and contracts required to safely scale toward a 
 - Unity gameplay scenes and loops
 - Full content pipelines for all required data sets
 - Large-scale city map assets and streaming assets
+- Phase 1.6 gameplay/runtime implementation
 
 ## Recommended Next Development Phase
 **Phase 1.6 — Authoritative Multiplayer Slice**

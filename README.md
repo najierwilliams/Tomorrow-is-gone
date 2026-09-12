@@ -2,6 +2,8 @@
 
 A modular zombie survival/horror game foundation intended for future Unity development.
 
+PlayStation 5 is the exclusive target platform for all future architecture and runtime implementation.
+
 ## Current Development Phase
 **Phase 1.5 — Multiplayer World Architecture**
 
@@ -9,6 +11,7 @@ This repository now contains:
 - Implemented Phase 1 core prototypes
 - Phase 1.5 architecture contracts for long-term multiplayer world systems
 - Documentation for engine-independent boundaries and future Unity integration
+- PS5-focused architecture constraints for large persistent multiplayer worlds
 
 ## Repository Structure
 - `/docs` — architecture and Unity integration documentation
@@ -36,16 +39,17 @@ This repository now contains:
 ## Designed Systems (Phase 1.5, architecture-level)
 - Server architecture/configuration contracts
 - Unified player state for human/infected/zombie
-- Transformation and zombie sanity contracts
+- Transformation and zombie sanity contracts (including cure-gated reversion and sanity bands)
 - Animal infection/taming/ability contracts
-- Region/chunk/streaming world contracts
+- Region/chunk/streaming world contracts with configurable finite vertical world range
 - Building/destruction persistence contracts
-- Loot tier/container contracts
+- Loot tier/container contracts with explicit container-tier-to-pool eligibility boundaries
 - Crafting/workbench contracts
 - Item durability general contracts
 - Vehicle, NPC, mission, economy, weather contracts
 - Save/persistence domain partitioning contracts
 - Multiplayer authority/replication contracts
+- Client command-intent contract surface for server-authoritative simulation
 - Unity integration port contracts
 
 See:
@@ -62,6 +66,7 @@ python -m unittest discover -s tests -p "test_*.py"
 
 ## What Is Not Implemented Yet
 - Full gameplay implementation for Phase 1.5 systems
+- Phase 1.6 runtime gameplay implementation (not started in this repository task)
 - Full server runtime, transport, and persistence backend
 - Unity gameplay implementation and world streaming runtime
 - Full content authoring for all long-term game datasets
