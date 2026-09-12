@@ -78,45 +78,73 @@ class Phase16AuthoritativeSliceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             runtime, transport = build_runtime(Path(directory))
             runtime.join_player("player_a", PlayerForm.HUMAN, WorldCoordinate(0.0, 0.0, 0.0))
+            runtime.join_player("player_z", PlayerForm.ZOMBIE, WorldCoordinate(1.0, 0.0, 0.0))
+            transport.submit_command_intent(
+                ClientCommandIntent(
+                    command_id="infect_hit",
+                    player_id="player_z",
+                    topic="player.interact",
+                    payload={"action": "attack_player", "target_player_id": "player_a", "attempt_infect": True},
+                )
+            )
+            runtime.process_tick()
+            self.assertEqual(runtime.players["player_a"].state.form, PlayerForm.INFECTED_HUMAN)
+
+            for _ in range(30):
+                if runtime.players["player_a"].state.form == PlayerForm.ZOMBIE:
+                    break
+                runtime.process_tick()
+            self.assertEqual(runtime.players["player_a"].state.form, PlayerForm.ZOMBIE)
 
             transport.submit_command_intent(
                 ClientCommandIntent(
-                    command_id="infect",
-                    player_id="player_a",
-                    topic="player.infect",
-                    payload={"target_form": "infected_human"},
-                )
-            )
-            transport.submit_command_intent(
-                ClientCommandIntent(
-                    command_id="zombify",
-                    player_id="player_a",
-                    topic="player.infect",
-                    payload={"target_form": "zombie"},
-                )
-            )
-            transport.submit_command_intent(
-                ClientCommandIntent(
                     command_id="invalid_cure",
-                    player_id="player_a",
-                    topic="player.infect",
-                    payload={"target_form": "human"},
-                )
-            )
-            transport.submit_command_intent(
-                ClientCommandIntent(
-                    command_id="valid_cure",
                     player_id="player_a",
                     topic="player.infect",
                     payload={"target_form": "human", "cure_available": True},
                 )
             )
             runtime.process_tick()
+            self.assertEqual(runtime.command_results[0]["accepted"], False)
+
+            player = runtime.players["player_a"]
+            player.inventory.add_item(runtime._item_definition_for("antiviral_serum"), 3)
+            for index in range(3):
+                transport.submit_command_intent(
+                    ClientCommandIntent(
+                        command_id=f"med_{index}",
+                        player_id="player_a",
+                        topic="player.use_item",
+                        payload={"item_id": "antiviral_serum"},
+                    )
+                )
+                runtime.process_tick()
+            self.assertEqual(runtime.players["player_a"].state.infection_progress, 0.0)
+
+            for index in range(5):
+                transport.submit_command_intent(
+                    ClientCommandIntent(
+                        command_id=f"feed_{index}",
+                        player_id="player_a",
+                        topic="zombie.feed",
+                        payload={},
+                    )
+                )
+                runtime.process_tick()
+            runtime.players["player_a"].zombie_state.sanity.value = 90.0
+            runtime._refresh_zombie_sanity_state(runtime.players["player_a"].zombie_state)
+
+            transport.submit_command_intent(
+                ClientCommandIntent(
+                    command_id="valid_cure",
+                    player_id="player_a",
+                    topic="player.infect",
+                    payload={"target_form": "human"},
+                )
+            )
+            runtime.process_tick()
 
             self.assertEqual(runtime.command_results[0]["accepted"], True)
-            self.assertEqual(runtime.command_results[1]["accepted"], True)
-            self.assertEqual(runtime.command_results[2]["accepted"], False)
-            self.assertEqual(runtime.command_results[3]["accepted"], True)
             self.assertEqual(runtime.players["player_a"].state.form, PlayerForm.HUMAN)
 
     def test_chunk_interest_activates_and_deactivates_relevant_chunks(self) -> None:
@@ -177,7 +205,7 @@ class Phase16AuthoritativeSliceTests(unittest.TestCase):
                     command_id="move",
                     player_id="player_a",
                     topic="player.move",
-                    payload={"target_x": 20.0, "target_y": 0.0, "target_z": 10.0},
+                    payload={"target_x": 5.0, "target_y": 0.0, "target_z": 78.0},
                 )
             )
             transport.submit_command_intent(
@@ -185,7 +213,7 @@ class Phase16AuthoritativeSliceTests(unittest.TestCase):
                     command_id="loot",
                     player_id="player_a",
                     topic="player.interact",
-                    payload={"action": "loot_container", "container_id": "container_a"},
+                    payload={"action": "loot_container", "container_id": "container_c"},
                 )
             )
             runtime.process_tick()
@@ -197,10 +225,10 @@ class Phase16AuthoritativeSliceTests(unittest.TestCase):
             self.assertIn("player_a", restored_runtime.players)
             self.assertEqual(
                 restored_runtime.players["player_a"].human_state.position.x,
-                20.0,
+                5.0,
             )
-            self.assertTrue(restored_runtime.world.containers["container_a"].looted)
-            self.assertTrue(restored_runtime.world.containers["container_a"].generated_items)
+            self.assertTrue(restored_runtime.world.containers["container_c"].looted)
+            self.assertTrue(restored_runtime.world.containers["container_c"].generated_items)
 
     def test_human_and_zombie_missions_progress_authoritatively(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -213,23 +241,23 @@ class Phase16AuthoritativeSliceTests(unittest.TestCase):
                     command_id="human_accept",
                     player_id="player_h",
                     topic="mission.accept",
-                    payload={"mission_id": "mission_human_retrieve_item"},
+                    payload={"mission_id": "mission_human_gather_resources"},
                 )
             )
             transport.submit_command_intent(
                 ClientCommandIntent(
-                    command_id="human_progress_1",
+                    command_id="move_h",
                     player_id="player_h",
-                    topic="mission.progress",
-                    payload={"mission_id": "mission_human_retrieve_item", "objective_id": "reach_building_a"},
+                    topic="player.move",
+                    payload={"target_x": 12.0, "target_y": 0.0, "target_z": 12.0},
                 )
             )
             transport.submit_command_intent(
                 ClientCommandIntent(
-                    command_id="human_progress_2",
+                    command_id="human_gather",
                     player_id="player_h",
-                    topic="mission.progress",
-                    payload={"mission_id": "mission_human_retrieve_item", "objective_id": "retrieve_water_bottle"},
+                    topic="gather.resource",
+                    payload={"node_id": "node_scrap_1"},
                 )
             )
             transport.submit_command_intent(
@@ -250,7 +278,7 @@ class Phase16AuthoritativeSliceTests(unittest.TestCase):
             )
             runtime.process_tick()
 
-            human_mission = runtime.mission_states["player_h"]["mission_human_retrieve_item"]
+            human_mission = runtime.mission_states["player_h"]["mission_human_gather_resources"]
             zombie_mission = runtime.mission_states["player_z"]["mission_zombie_feed_target"]
             self.assertTrue(human_mission.completed)
             self.assertTrue(zombie_mission.completed)
@@ -274,11 +302,11 @@ class Phase16AuthoritativeSliceTests(unittest.TestCase):
             snapshots_for_a = transport.pop_snapshots("player_a")
             self.assertTrue(snapshots_for_a)
             latest_snapshot = snapshots_for_a[-1]
-            self.assertEqual(latest_snapshot["state"]["health"], 75.0)
+            self.assertEqual(latest_snapshot["state"]["health"], 88.0)
 
             adapter = Phase16UnityAdapter()
             adapter.push_state_snapshot("authoritative.snapshot", latest_snapshot)
-            self.assertEqual(adapter.view.player_representations["player_a"]["health"], 75.0)
+            self.assertEqual(adapter.view.player_representations["player_a"]["health"], 88.0)
             self.assertIn("active_chunks", adapter.view.world_representation)
 
 
