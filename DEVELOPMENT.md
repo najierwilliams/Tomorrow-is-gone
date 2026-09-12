@@ -25,10 +25,12 @@
   - Implemented local multiplayer simulation and authoritative combat replication
   - Integrated replicated state snapshots into the Phase16 Unity adapter prototype
 
-- **Phase 2 — Core Gameplay Runtime Expansion (Recommended Next)**
-  - Expand movement, interactions, scavenging, survival loops on top of authority model
+- **Phase 2 — Core Gameplay Runtime Expansion (Implemented)**
+  - Expanded authoritative survival runtime loops for human and zombie forms
+  - Added server-authoritative inventory usage, equipment, crafting, gathering, gardening, construction, destruction, economy, and power foundations
+  - Added persistent animals, infected animal abilities, taming, horde foundations, expanded missions/progression, and chunk-aware replication payloads
 
-- **Phase 3 — AI and Encounter Expansion**
+- **Phase 3 — AI and Encounter Expansion (Recommended Next)**
   - Extend zombie and NPC runtime behaviors with data-driven profiles
 
 - **Phase 4 — Combat and Equipment Runtime**
