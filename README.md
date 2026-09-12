@@ -5,13 +5,14 @@ A modular zombie survival/horror game foundation intended for future Unity devel
 PlayStation 5 is the exclusive target platform for all future architecture and runtime implementation.
 
 ## Current Development Phase
-**Phase 2 (implemented) — Core Gameplay Runtime Expansion**
+**Phase 3 (implemented) — AI & Encounter Expansion**
 
 This repository now contains:
 - Implemented Phase 1 core prototypes
 - Implemented Phase 1.5 architecture contracts for long-term multiplayer world systems
 - Implemented Phase 1.6 authoritative multiplayer runtime slice
 - Implemented Phase 2 core gameplay runtime expansion systems
+- Implemented Phase 3 server-authoritative AI/navigation/perception/encounter expansion systems
 - Documentation for engine-independent boundaries and future Unity integration
 - PS5-focused architecture constraints for large persistent multiplayer worlds
 
@@ -56,12 +57,17 @@ This repository now contains:
 - Persistent world domains for structures, destruction, animals, gardens, power state, hordes, missions, progression, and economy
 - Multiplayer-authoritative infection interactions for humans and animals
 - Expanded chunk-aware replicated snapshots for inventory/equipment, animals, structures, world resources, missions, economy, and power
+- Engine-independent AI core contracts and deterministic chunk navigation abstraction (`prototypes/core/phase3_ai.py`)
+- Server-authoritative zombie perception (vision/hearing/memory), target scoring/switching, pursuit abandonment, recruitment, and dynamic horde splitting
+- Human NPC encounter behavior foundation (threat detection, flee/combat response, investigation/wander)
+- Chunk-aware AI evaluation and persisted NPC AI memory/state with Unity adapter projection support
 
 See:
 - `docs/ARCHITECTURE.md`
 - `docs/PHASE_1_5_MULTIPLAYER_WORLD_ARCHITECTURE.md`
 - `docs/PHASE_1_6_AUTHORITATIVE_MULTIPLAYER_SLICE.md`
 - `docs/PHASE_2_CORE_GAMEPLAY_RUNTIME_EXPANSION.md`
+- `docs/PHASE_3_AI_AND_ENCOUNTER_EXPANSION.md`
 - `prototypes/core/phase15_contracts.py`
 - `prototypes/core/phase16_authoritative_runtime.py`
 
@@ -81,7 +87,6 @@ python -m unittest discover -s tests -p "test_*.py"
 - Future late-phase PC expansion and mod/community platform support
 
 ## Recommended Next Step
-**Phase 3 — AI and Encounter Expansion**
-- Expand advanced zombie and NPC AI using the persisted authoritative entity model introduced in Phase 2.
-- Deepen mission/content variety and balancing on top of current runtime systems.
-- Continue toward production networking and platform integration in later phases.
+**Phase 4 — Combat and Equipment Runtime**
+- Expand combat depth and balancing over the now-established authoritative encounter AI layer.
+- Continue platform/transport productionization while preserving core engine independence.
