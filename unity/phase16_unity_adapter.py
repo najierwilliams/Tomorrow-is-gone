@@ -47,8 +47,10 @@ class Phase16UnityAdapter(UnityIntegrationPort):
 
         self.view.world_representation = {
             "active_chunks": payload.get("active_chunks", []),
+            "chunk_metadata": payload.get("chunk_metadata", {}),
             "containers": payload.get("containers", {}),
             "resource_nodes": payload.get("resource_nodes", {}),
+            "environment_state_by_region": payload.get("environment_state_by_region", {}),
             "gardens": payload.get("gardens", {}),
             "power": payload.get("power", {}),
             "hordes": payload.get("hordes", {}),

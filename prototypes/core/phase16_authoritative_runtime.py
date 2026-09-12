@@ -53,6 +53,22 @@ from .phase3_ai import (
     facing_towards,
     move_away,
 )
+from .phase4_world import (
+    ChunkLifecycleState,
+    ChunkCoordinate,
+    ChunkPersistentDelta,
+    ChunkRecord,
+    DeterministicWorldGenerator,
+    InterestRadii,
+    RegionCoordinate,
+    RegionalEnvironmentState,
+    WorldAddress,
+    WorldBounds,
+    WorldCoordinateMapper,
+    WorldGridDefinition,
+    WorldPosition,
+    load_phase4_world_definitions,
+)
 from .player import PlayerStats
 
 
@@ -226,6 +242,7 @@ class LootContainerRuntime:
     container_id: str
     definition: LootContainerDefinition
     coordinate: WorldCoordinate
+    chunk_key: str = ""
     generated_items: list[ItemStack] = field(default_factory=list)
     looted: bool = False
 
@@ -235,6 +252,7 @@ class ResourceNodeRuntime:
     node_id: str
     node_type: str
     coordinate: WorldCoordinate
+    chunk_key: str
     quantity: int
     max_quantity: int
     respawn_ticks: int
@@ -261,6 +279,7 @@ class StructureRuntime:
     owner_player_id: str
     health: float
     max_health: float
+    chunk_key: str = ""
     state: str = "completed"
 
 
@@ -339,6 +358,11 @@ class WorldChunkRuntime:
     building_ids: list[str] = field(default_factory=list)
     container_ids: list[str] = field(default_factory=list)
     active: bool = False
+    lifecycle_state: str = ChunkLifecycleState.UNLOADED.value
+    load_error: str = ""
+    static_metadata: dict[str, object] = field(default_factory=dict)
+    dynamic_metadata: dict[str, object] = field(default_factory=dict)
+    persistent_delta: ChunkPersistentDelta = field(default_factory=ChunkPersistentDelta)
 
 
 @dataclass
@@ -471,7 +495,12 @@ class AuthoritativeServerRuntime:
         self.transport = transport
         self.loot_generator = loot_generator
         self.data_root = data_root or Path(__file__).resolve().parents[2] / "data"
-        self.grid_config = grid_config or WorldGridConfig(
+        self.phase4_definitions = None
+        phase4_path = self.data_root / "phase4_world_definitions.json"
+        if phase4_path.exists():
+            self.phase4_definitions = load_phase4_world_definitions(phase4_path)
+
+        default_grid = WorldGridConfig(
             chunk_size_meters=64,
             chunks_per_region=8,
             chunk_height_meters=32,
@@ -479,9 +508,56 @@ class AuthoritativeServerRuntime:
             minimum_world_y_meters=-64,
             maximum_world_y_meters=128,
         )
-        self.interest_radius_chunks = interest_radius_chunks
+        if self.phase4_definitions:
+            world_grid = self.phase4_definitions.grid
+            default_grid = WorldGridConfig(
+                chunk_size_meters=world_grid.chunk_size_xz,
+                chunks_per_region=world_grid.chunks_per_region_xz,
+                chunk_height_meters=world_grid.chunk_height,
+                chunks_per_vertical_region=world_grid.chunks_per_region_y,
+                minimum_world_y_meters=world_grid.world_bounds.minimum_y,
+                maximum_world_y_meters=world_grid.world_bounds.maximum_y,
+            )
+        self.grid_config = grid_config or WorldGridConfig(
+            chunk_size_meters=default_grid.chunk_size_meters,
+            chunks_per_region=default_grid.chunks_per_region,
+            chunk_height_meters=default_grid.chunk_height_meters,
+            chunks_per_vertical_region=default_grid.chunks_per_vertical_region,
+            minimum_world_y_meters=default_grid.minimum_world_y_meters,
+            maximum_world_y_meters=default_grid.maximum_world_y_meters,
+        )
+        fallback_bounds = (
+            self.phase4_definitions.grid.world_bounds
+            if self.phase4_definitions
+            else self._build_fallback_world_bounds()
+        )
+        self.coordinate_mapper = WorldCoordinateMapper(
+            WorldGridDefinition(
+                chunk_size_xz=self.grid_config.chunk_size_meters,
+                chunk_height=self.grid_config.chunk_height_meters,
+                chunks_per_region_xz=self.grid_config.chunks_per_region,
+                chunks_per_region_y=self.grid_config.chunks_per_vertical_region,
+                world_bounds=fallback_bounds,
+            )
+        )
+        self.streaming_radii = (
+            self.phase4_definitions.interest_radii
+            if self.phase4_definitions
+            else InterestRadii(
+                simulation_radius=interest_radius_chunks,
+                replication_radius=interest_radius_chunks,
+                persistence_activation_radius=interest_radius_chunks + 1,
+                ai_interest_radius=1,
+                vertical_radius=0,
+            )
+        )
+        self.interest_radius_chunks = self.streaming_radii.replication_radius
         self._tick_index = 0
         self.navigation_provider = navigation_provider or DeterministicChunkNavigationProvider(self.grid_config)
+        seed = self.phase4_definitions.world_seed if self.phase4_definitions else 42
+        generation_version = self.phase4_definitions.generation_version if self.phase4_definitions else 1
+        self.world_generator = DeterministicWorldGenerator(seed=seed, generation_version=generation_version)
+        self.environment_state_by_region: dict[str, RegionalEnvironmentState] = {}
 
         self.server_configuration = ServerConfiguration(
             server_id="phase16-local",
@@ -918,6 +994,7 @@ class AuthoritativeServerRuntime:
         ]
 
         for container in container_defs:
+            container.chunk_key = self.chunk_key(self.grid_config.to_chunk_address(container.coordinate))
             self.world.containers[container.container_id] = container
 
         chunk_containers: dict[str, list[str]] = {}
@@ -937,6 +1014,7 @@ class AuthoritativeServerRuntime:
             node_id="node_scrap_1",
             node_type="scrap_pile",
             coordinate=WorldCoordinate(x=12.0, y=0.0, z=12.0),
+            chunk_key=self.chunk_key(self.grid_config.to_chunk_address(WorldCoordinate(x=12.0, y=0.0, z=12.0))),
             quantity=4,
             max_quantity=4,
             respawn_ticks=self.resource_node_definitions.get("scrap_pile", ResourceNodeDefinition("scrap_pile", "scrap_metal", 1, 3)).respawn_ticks,
@@ -945,6 +1023,7 @@ class AuthoritativeServerRuntime:
             node_id="node_wood_1",
             node_type="wood_stump",
             coordinate=WorldCoordinate(x=20.0, y=0.0, z=8.0),
+            chunk_key=self.chunk_key(self.grid_config.to_chunk_address(WorldCoordinate(x=20.0, y=0.0, z=8.0))),
             quantity=5,
             max_quantity=5,
             respawn_ticks=self.resource_node_definitions.get("wood_stump", ResourceNodeDefinition("wood_stump", "wood_log", 2, 2)).respawn_ticks,
@@ -1035,9 +1114,39 @@ class AuthoritativeServerRuntime:
             shop_id=None,
         )
 
+        origin_address = self._to_world_address(WorldCoordinate(x=0.0, y=0.0, z=0.0))
+        self.environment_state_by_region[
+            f"{origin_address.region.x}:{origin_address.region.y}:{origin_address.region.z}"
+        ] = RegionalEnvironmentState(
+            region=origin_address.region,
+            season_id="summer",
+            temperature_celsius=24.0,
+            precipitation_intensity=0.1,
+            is_underwater=False,
+            water_depth_meters=0,
+        )
+
     @staticmethod
     def chunk_key(address) -> str:
         return f"{address.chunk_x}:{address.chunk_y}:{address.chunk_z}"
+
+    def _build_fallback_world_bounds(self):
+        chunk_span = self.grid_config.chunk_size_meters * self.grid_config.chunks_per_region * 2048
+        return self.phase4_definitions.grid.world_bounds if self.phase4_definitions else WorldBounds(
+            minimum_x=-chunk_span,
+            maximum_x=chunk_span,
+            minimum_y=self.grid_config.minimum_world_y_meters,
+            maximum_y=self.grid_config.maximum_world_y_meters,
+            minimum_z=-chunk_span,
+            maximum_z=chunk_span,
+        )
+
+    @staticmethod
+    def _to_world_position(coordinate: WorldCoordinate) -> WorldPosition:
+        return WorldPosition(x=int(coordinate.x), y=int(coordinate.y), z=int(coordinate.z))
+
+    def _to_world_address(self, coordinate: WorldCoordinate) -> WorldAddress:
+        return self.coordinate_mapper.to_world_address(self._to_world_position(coordinate))
 
     def start(self) -> None:
         self._load_persisted_state()
@@ -1135,6 +1244,17 @@ class AuthoritativeServerRuntime:
                     "building_ids": chunk.building_ids,
                     "container_ids": chunk.container_ids,
                     "active": chunk.active,
+                    "lifecycle_state": chunk.lifecycle_state,
+                    "load_error": chunk.load_error,
+                    "static_metadata": chunk.static_metadata,
+                    "dynamic_metadata": chunk.dynamic_metadata,
+                    "persistent_delta": {
+                        "destroyed_structure_ids": sorted(chunk.persistent_delta.destroyed_structure_ids),
+                        "harvested_resource_ids": sorted(chunk.persistent_delta.harvested_resource_ids),
+                        "modified_containers": chunk.persistent_delta.modified_containers,
+                        "player_built_structures": chunk.persistent_delta.player_built_structures,
+                        "persistent_entity_state": chunk.persistent_delta.persistent_entity_state,
+                    },
                 }
                 for key, chunk in self.world.chunks.items()
             },
@@ -1143,6 +1263,7 @@ class AuthoritativeServerRuntime:
                     "node_id": node.node_id,
                     "node_type": node.node_type,
                     "coordinate": asdict(node.coordinate),
+                    "chunk_key": node.chunk_key,
                     "quantity": node.quantity,
                     "max_quantity": node.max_quantity,
                     "respawn_ticks": node.respawn_ticks,
@@ -1167,6 +1288,7 @@ class AuthoritativeServerRuntime:
                     "structure_id": structure.structure_id,
                     "blueprint_id": structure.blueprint_id,
                     "coordinate": asdict(structure.coordinate),
+                    "chunk_key": structure.chunk_key,
                     "orientation_yaw": structure.orientation_yaw,
                     "owner_player_id": structure.owner_player_id,
                     "health": structure.health,
@@ -1176,6 +1298,17 @@ class AuthoritativeServerRuntime:
                 for structure_id, structure in self.world.structures.items()
             },
             "destruction_records": [asdict(record) for record in self.world.destruction_records],
+            "environment_state_by_region": {
+                region_key: {
+                    "region": asdict(state.region),
+                    "season_id": state.season_id,
+                    "temperature_celsius": state.temperature_celsius,
+                    "precipitation_intensity": state.precipitation_intensity,
+                    "is_underwater": state.is_underwater,
+                    "water_depth_meters": state.water_depth_meters,
+                }
+                for region_key, state in self.environment_state_by_region.items()
+            },
             "animals": {
                 animal_id: {
                     "state": {
@@ -1261,6 +1394,7 @@ class AuthoritativeServerRuntime:
                 "tier_weights": container.definition.tier_weights,
                 "respawn_seconds": container.definition.respawn_seconds,
                 "coordinate": asdict(container.coordinate),
+                "chunk_key": container.chunk_key,
                 "generated_items": [asdict(item) for item in container.generated_items],
                 "looted": container.looted,
             }
@@ -1350,6 +1484,17 @@ class AuthoritativeServerRuntime:
                 building_ids=list(payload.get("building_ids", [])),
                 container_ids=list(payload.get("container_ids", [])),
                 active=bool(payload.get("active", False)),
+                lifecycle_state=payload.get("lifecycle_state", ChunkLifecycleState.UNLOADED.value),
+                load_error=payload.get("load_error", ""),
+                static_metadata=dict(payload.get("static_metadata", {})),
+                dynamic_metadata=dict(payload.get("dynamic_metadata", {})),
+                persistent_delta=ChunkPersistentDelta(
+                    destroyed_structure_ids=set(payload.get("persistent_delta", {}).get("destroyed_structure_ids", [])),
+                    harvested_resource_ids=set(payload.get("persistent_delta", {}).get("harvested_resource_ids", [])),
+                    modified_containers=dict(payload.get("persistent_delta", {}).get("modified_containers", {})),
+                    player_built_structures=dict(payload.get("persistent_delta", {}).get("player_built_structures", {})),
+                    persistent_entity_state=dict(payload.get("persistent_delta", {}).get("persistent_entity_state", {})),
+                ),
             )
 
         for container_id, payload in loot_payload.items():
@@ -1358,12 +1503,17 @@ class AuthoritativeServerRuntime:
             container = self.world.containers[container_id]
             container.generated_items = [ItemStack(**item) for item in payload.get("generated_items", [])]
             container.looted = bool(payload.get("looted", False))
+            container.chunk_key = payload.get(
+                "chunk_key",
+                self.chunk_key(self.grid_config.to_chunk_address(container.coordinate)),
+            )
 
         for node_id, payload in world_payload.get("resource_nodes", {}).items():
             if node_id in self.world.resource_nodes:
                 node = self.world.resource_nodes[node_id]
                 node.quantity = int(payload.get("quantity", node.quantity))
                 node.depleted_ticks = int(payload.get("depleted_ticks", node.depleted_ticks))
+                node.chunk_key = payload.get("chunk_key", node.chunk_key)
 
         for plot_id, payload in world_payload.get("gardens", {}).items():
             if plot_id in self.world.gardens:
@@ -1379,6 +1529,10 @@ class AuthoritativeServerRuntime:
                 structure_id=payload["structure_id"],
                 blueprint_id=payload["blueprint_id"],
                 coordinate=WorldCoordinate(**payload["coordinate"]),
+                chunk_key=payload.get(
+                    "chunk_key",
+                    self.chunk_key(self.grid_config.to_chunk_address(WorldCoordinate(**payload["coordinate"]))),
+                ),
                 orientation_yaw=float(payload.get("orientation_yaw", 0.0)),
                 owner_player_id=payload["owner_player_id"],
                 health=float(payload["health"]),
@@ -1394,6 +1548,17 @@ class AuthoritativeServerRuntime:
             )
             for record in world_payload.get("destruction_records", [])
         ]
+        self.environment_state_by_region = {
+            region_key: RegionalEnvironmentState(
+                region=RegionCoordinate(**payload["region"]),
+                season_id=str(payload["season_id"]),
+                temperature_celsius=float(payload["temperature_celsius"]),
+                precipitation_intensity=float(payload["precipitation_intensity"]),
+                is_underwater=bool(payload.get("is_underwater", False)),
+                water_depth_meters=int(payload.get("water_depth_meters", 0)),
+            )
+            for region_key, payload in world_payload.get("environment_state_by_region", {}).items()
+        }
 
         for animal_id, payload in world_payload.get("animals", {}).items():
             source_state = payload["state"]
@@ -1591,6 +1756,10 @@ class AuthoritativeServerRuntime:
             return False, "invalid_position_payload"
 
         if not self.grid_config.supports_vertical_coordinate(requested_position.y):
+            return False, "position_out_of_world_bounds"
+        try:
+            self.coordinate_mapper.validate_world_position(self._to_world_position(requested_position))
+        except ValueError:
             return False, "position_out_of_world_bounds"
 
         current_position = player.human_state.position
@@ -1981,6 +2150,9 @@ class AuthoritativeServerRuntime:
         node.quantity -= gathered
         if node.quantity == 0:
             node.depleted_ticks = node.respawn_ticks
+            chunk = self.world.chunks.get(node.chunk_key)
+            if chunk is not None:
+                chunk.persistent_delta.harvested_resource_ids.add(node.node_id)
 
         overflow = player.inventory.add_item(self._item_definition_for(definition.yields_item_id), gathered)
         if overflow > 0:
@@ -2084,12 +2256,21 @@ class AuthoritativeServerRuntime:
             structure_id=structure_id,
             blueprint_id=blueprint_id,
             coordinate=coordinate,
+            chunk_key=self.chunk_key(self.grid_config.to_chunk_address(coordinate)),
             orientation_yaw=float(payload.get("orientation_yaw", 0.0)),
             owner_player_id=player.state.player_id,
             health=definition.max_health,
             max_health=definition.max_health,
             state="completed",
         )
+        structure_chunk = self.world.chunks.setdefault(
+            self.world.structures[structure_id].chunk_key,
+            WorldChunkRuntime(chunk_key=self.world.structures[structure_id].chunk_key),
+        )
+        structure_chunk.persistent_delta.player_built_structures[structure_id] = {
+            "blueprint_id": blueprint_id,
+            "owner_player_id": player.state.player_id,
+        }
         self._record_progression(player, xp_gain=25)
         self._progress_mission_objective(player.state.player_id, "mission_human_survive_cycle", "build_structure")
         return True, "ok"
@@ -2121,6 +2302,9 @@ class AuthoritativeServerRuntime:
         )
         if structure.health == 0.0:
             structure.state = "destroyed"
+            chunk = self.world.chunks.get(structure.chunk_key)
+            if chunk is not None:
+                chunk.persistent_delta.destroyed_structure_ids.add(structure_id)
             self._progress_mission_objective(player.state.player_id, "mission_zombie_destroy_structure", "destroy_once")
         return True, "ok"
 
@@ -2951,9 +3135,10 @@ class AuthoritativeServerRuntime:
     def _player_required_chunks(self, player: AuthoritativePlayer) -> list[str]:
         center = self.grid_config.to_chunk_address(player.human_state.position)
         required: list[str] = []
-        for offset_x in range(-self.interest_radius_chunks, self.interest_radius_chunks + 1):
-            for offset_z in range(-self.interest_radius_chunks, self.interest_radius_chunks + 1):
-                required.append(f"{center.chunk_x + offset_x}:{center.chunk_y}:{center.chunk_z + offset_z}")
+        for offset_x in range(-self.streaming_radii.replication_radius, self.streaming_radii.replication_radius + 1):
+            for offset_y in range(-self.streaming_radii.vertical_radius, self.streaming_radii.vertical_radius + 1):
+                for offset_z in range(-self.streaming_radii.replication_radius, self.streaming_radii.replication_radius + 1):
+                    required.append(f"{center.chunk_x + offset_x}:{center.chunk_y + offset_y}:{center.chunk_z + offset_z}")
         return required
 
     def _refresh_chunk_interest(self) -> None:
@@ -2963,10 +3148,28 @@ class AuthoritativeServerRuntime:
 
         for chunk_key in required_for_all:
             chunk = self.world.chunks.setdefault(chunk_key, WorldChunkRuntime(chunk_key=chunk_key))
+            if chunk.lifecycle_state in {ChunkLifecycleState.UNLOADED.value, ChunkLifecycleState.FAILED.value}:
+                chunk.lifecycle_state = ChunkLifecycleState.LOADING.value
+            if not chunk.static_metadata:
+                chunk_coordinate = ChunkCoordinate(*[int(part) for part in chunk_key.split(":")])
+                baseline = self.world_generator.generate_chunk(chunk_coordinate)
+                chunk.static_metadata = {
+                    "biome_id": baseline.terrain.biome_id,
+                    "base_height": baseline.terrain.base_height,
+                    "water_depth": baseline.terrain.water_depth,
+                    "resource_node_ids": [resource.node_id for resource in baseline.resources],
+                    "poi_ids": [poi.poi_id for poi in baseline.pois],
+                    "spawn_ids": [spawn.spawn_id for spawn in baseline.spawns],
+                }
+            chunk.lifecycle_state = ChunkLifecycleState.ACTIVE.value
             chunk.active = True
 
         for key, chunk in self.world.chunks.items():
             if key not in required_for_all:
+                if chunk.lifecycle_state == ChunkLifecycleState.ACTIVE.value:
+                    chunk.lifecycle_state = ChunkLifecycleState.UNLOADING.value
+                elif chunk.lifecycle_state == ChunkLifecycleState.UNLOADING.value:
+                    chunk.lifecycle_state = ChunkLifecycleState.UNLOADED.value
                 chunk.active = False
 
     def _is_power_group_sufficient(self, power_group_id: str) -> bool:
@@ -3016,6 +3219,7 @@ class AuthoritativeServerRuntime:
                     "blueprint_id": structure.blueprint_id,
                     "state": structure.state,
                     "health": structure.health,
+                    "chunk_key": structure.chunk_key,
                     "position": asdict(structure.coordinate),
                 }
                 for structure_id, structure in self.world.structures.items()
@@ -3026,6 +3230,7 @@ class AuthoritativeServerRuntime:
                 node_id: {
                     "node_type": node.node_type,
                     "quantity": node.quantity,
+                    "chunk_key": node.chunk_key,
                     "position": asdict(node.coordinate),
                 }
                 for node_id, node in self.world.resource_nodes.items()
@@ -3041,10 +3246,30 @@ class AuthoritativeServerRuntime:
                     for key in visible_chunk_keys
                     if self.world.chunks.get(key, WorldChunkRuntime(key)).active
                 ),
+                "chunk_metadata": {
+                    key: {
+                        "lifecycle_state": self.world.chunks[key].lifecycle_state,
+                        "static_metadata": self.world.chunks[key].static_metadata,
+                        "dynamic_metadata": self.world.chunks[key].dynamic_metadata,
+                    }
+                    for key in visible_chunk_keys
+                    if key in self.world.chunks
+                },
+                "environment_state_by_region": {
+                    region_key: {
+                        "season_id": state.season_id,
+                        "temperature_celsius": state.temperature_celsius,
+                        "precipitation_intensity": state.precipitation_intensity,
+                        "is_underwater": state.is_underwater,
+                        "water_depth_meters": state.water_depth_meters,
+                    }
+                    for region_key, state in self.environment_state_by_region.items()
+                },
                 "containers": {
                     container_id: {
                         "looted": container.looted,
                         "generated_items": [asdict(stack) for stack in container.generated_items],
+                        "chunk_key": container.chunk_key,
                     }
                     for container_id, container in self.world.containers.items()
                     if self.chunk_key(self.grid_config.to_chunk_address(container.coordinate)) in visible_chunk_keys
