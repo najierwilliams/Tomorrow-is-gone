@@ -14,19 +14,24 @@
     "food_degrade_per_tick": 1.0
   },
   "items": [
-    {"item_id": "water_bottle", "name": "Water Bottle", "category": "water", "max_stack": 5, "weight": 0.5},
-    {"item_id": "canned_food", "name": "Canned Food", "category": "food", "max_stack": 5, "weight": 0.6},
-    {"item_id": "cooked_meat", "name": "Cooked Meat", "category": "food", "max_stack": 6, "weight": 0.7},
-    {"item_id": "scrap_metal", "name": "Scrap Metal", "category": "crafting", "max_stack": 20, "weight": 0.2},
-    {"item_id": "wood_log", "name": "Wood Log", "category": "crafting", "max_stack": 15, "weight": 0.6},
-    {"item_id": "metal_plate", "name": "Metal Plate", "category": "crafting", "max_stack": 10, "weight": 0.8},
-    {"item_id": "seed_potato", "name": "Potato Seed", "category": "crafting", "max_stack": 20, "weight": 0.05},
-    {"item_id": "harvest_potato", "name": "Potato", "category": "food", "max_stack": 20, "weight": 0.2},
-    {"item_id": "ammo_9mm", "name": "9mm Ammo", "category": "ammo", "max_stack": 30, "weight": 0.02},
-    {"item_id": "med_kit", "name": "Medical Kit", "category": "medical", "max_stack": 3, "weight": 1.0},
-    {"item_id": "antiviral_serum", "name": "Antiviral Serum", "category": "medical", "max_stack": 2, "weight": 0.5},
-    {"item_id": "pistol_9mm", "name": "9mm Pistol", "category": "weapon", "max_stack": 1, "weight": 1.2},
-    {"item_id": "jacket_armor", "name": "Reinforced Jacket", "category": "clothing", "max_stack": 1, "weight": 2.5}
+    {"item_id": "water_bottle", "name": "Water Bottle", "category": "water", "max_stack": 5, "weight": 0.5, "quality_level": "common"},
+    {"item_id": "canned_food", "name": "Canned Food", "category": "food", "max_stack": 5, "weight": 0.6, "quality_level": "common"},
+    {"item_id": "cooked_meat", "name": "Cooked Meat", "category": "food", "max_stack": 6, "weight": 0.7, "quality_level": "common"},
+    {"item_id": "scrap_metal", "name": "Scrap Metal", "category": "crafting", "max_stack": 20, "weight": 0.2, "quality_level": "common"},
+    {"item_id": "wood_log", "name": "Wood Log", "category": "crafting", "max_stack": 15, "weight": 0.6, "quality_level": "common"},
+    {"item_id": "metal_plate", "name": "Metal Plate", "category": "crafting", "max_stack": 10, "weight": 0.8, "quality_level": "common"},
+    {"item_id": "seed_potato", "name": "Potato Seed", "category": "crafting", "max_stack": 20, "weight": 0.05, "quality_level": "common"},
+    {"item_id": "harvest_potato", "name": "Potato", "category": "food", "max_stack": 20, "weight": 0.2, "quality_level": "common"},
+    {"item_id": "ammo_9mm", "name": "9mm Ammo", "category": "ammo", "max_stack": 30, "weight": 0.02, "quality_level": "common"},
+    {"item_id": "med_kit", "name": "Medical Kit", "category": "medical", "max_stack": 3, "weight": 1.0, "quality_level": "common"},
+    {"item_id": "antiviral_serum", "name": "Antiviral Serum", "category": "medical", "max_stack": 2, "weight": 0.5, "quality_level": "uncommon"},
+    {"item_id": "pistol_9mm", "name": "9mm Pistol", "category": "weapon", "max_stack": 1, "weight": 1.2, "quality_level": "uncommon"},
+    {"item_id": "jacket_armor", "name": "Reinforced Jacket", "category": "clothing", "max_stack": 1, "weight": 2.5, "quality_level": "uncommon"}
+  ],
+  "loot_item_metadata": [
+    {"item_id": "jacket_armor", "category": "armor", "quality_level": "uncommon"},
+    {"item_id": "weapon_blueprint_t1", "category": "blueprint", "quality_level": "rare"},
+    {"item_id": "cosmetic_mask", "category": "cosmetic", "quality_level": "rare"}
   ],
   "food": [
     {"item_id": "canned_food", "hunger_restore": 25.0, "health_restore": 1.0},
@@ -126,6 +131,9 @@
   },
   "economy": {
     "currency_id": "credits",
-    "starting_balance": 50
+    "starting_balance": 50,
+    "spend_transactions": {
+      "basic_supply": 10
+    }
   }
 }

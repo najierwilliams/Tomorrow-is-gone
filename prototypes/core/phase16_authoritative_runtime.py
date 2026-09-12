@@ -475,10 +475,12 @@ class AuthoritativeServerRuntime:
         self.power_device_definitions: dict[str, PoweredDeviceDefinition] = {}
         self.progression_definition = ProgressionDefinition(levels=[{"level": 1, "xp_required": 0}], zombie_tier_thresholds={})
         self.economy_definition = EconomyDefinition(currency_id="credits", starting_balance=0)
+        self.economy_spend_transactions: dict[str, int] = {}
         self.zombie_tiers: dict[str, ZombieTierDefinition] = {}
         self.zombie_sanity_bands: list[ZombieSanityBandDefinition] = []
         self.mission_definitions: dict[str, MissionDefinition] = {}
         self.tier_definitions: dict[str, LootTierDefinition] = {}
+        self.loot_item_metadata: dict[str, dict[str, str]] = {}
         self.survival_config = SurvivalConfig(
             hunger_depletion_per_tick=1.0,
             thirst_depletion_per_tick=1.2,
@@ -511,6 +513,21 @@ class AuthoritativeServerRuntime:
                 max_stack=int(item.get("max_stack", 1)),
                 weight=float(item.get("weight", 0.0)),
             )
+            self.loot_item_metadata[item["item_id"]] = {
+                "category": str(item.get("category", "misc")),
+                "quality_level": str(item.get("quality_level", "common")),
+            }
+
+        for metadata in payload.get("loot_item_metadata", []):
+            item_id = metadata.get("item_id")
+            if not isinstance(item_id, str):
+                continue
+            self.loot_item_metadata[item_id] = {
+                "category": str(metadata.get("category", self.loot_item_metadata.get(item_id, {}).get("category", "misc"))),
+                "quality_level": str(
+                    metadata.get("quality_level", self.loot_item_metadata.get(item_id, {}).get("quality_level", "common"))
+                ),
+            }
 
         for food in payload.get("food", []):
             self.food_definitions[food["item_id"]] = FoodDefinition(
@@ -633,6 +650,11 @@ class AuthoritativeServerRuntime:
             currency_id=economy["currency_id"],
             starting_balance=int(economy["starting_balance"]),
         )
+        self.economy_spend_transactions = {
+            key: int(value)
+            for key, value in economy.get("spend_transactions", {}).items()
+            if isinstance(key, str) and int(value) > 0
+        }
 
         for tier in payload.get("zombie_tiers", []):
             self.zombie_tiers[tier["tier_id"]] = ZombieTierDefinition(
@@ -1127,8 +1149,12 @@ class AuthoritativeServerRuntime:
                 )
 
         for key, payload in world_payload.get("chunks", {}).items():
-            if key in self.world.chunks:
-                self.world.chunks[key].active = bool(payload.get("active", False))
+            self.world.chunks[key] = WorldChunkRuntime(
+                chunk_key=payload.get("chunk_key", key),
+                building_ids=list(payload.get("building_ids", [])),
+                container_ids=list(payload.get("container_ids", [])),
+                active=bool(payload.get("active", False)),
+            )
 
         for container_id, payload in loot_payload.items():
             if container_id not in self.world.containers:
@@ -1197,13 +1223,58 @@ class AuthoritativeServerRuntime:
             )
 
         for source_id, payload in world_payload.get("power_sources", {}).items():
-            if source_id in self.world.power_sources:
-                self.world.power_sources[source_id].enabled = bool(payload.get("enabled", True))
+            self.world.power_sources[source_id] = PowerSourceRuntime(
+                source_instance_id=payload.get("source_instance_id", source_id),
+                definition_id=payload.get(
+                    "definition_id",
+                    self.world.power_sources.get(source_id, PowerSourceRuntime(source_id, "generator_small", "", True)).definition_id,
+                ),
+                power_group_id=payload.get(
+                    "power_group_id",
+                    self.world.power_sources.get(source_id, PowerSourceRuntime(source_id, "generator_small", "", True)).power_group_id,
+                ),
+                enabled=bool(payload.get("enabled", True)),
+            )
 
         for device_id, payload in world_payload.get("powered_devices", {}).items():
-            if device_id in self.world.powered_devices:
-                self.world.powered_devices[device_id].enabled = bool(payload.get("enabled", True))
-                self.world.powered_devices[device_id].powered = bool(payload.get("powered", False))
+            self.world.powered_devices[device_id] = PoweredDeviceRuntime(
+                device_instance_id=payload.get("device_instance_id", device_id),
+                definition_id=payload.get(
+                    "definition_id",
+                    self.world.powered_devices.get(device_id, PoweredDeviceRuntime(device_id, "fabricator", "", True, False)).definition_id,
+                ),
+                power_group_id=payload.get(
+                    "power_group_id",
+                    self.world.powered_devices.get(device_id, PoweredDeviceRuntime(device_id, "fabricator", "", True, False)).power_group_id,
+                ),
+                enabled=bool(payload.get("enabled", True)),
+                powered=bool(payload.get("powered", False)),
+            )
+
+        npc_payload = world_payload.get("npcs", {})
+        if npc_payload:
+            self.world.npcs = {
+                npc_id: NpcRuntime(
+                    npc_id=payload["npc_id"],
+                    npc_type=payload["npc_type"],
+                    coordinate=WorldCoordinate(**payload["coordinate"]),
+                    settlement_id=payload.get("settlement_id"),
+                    shop_id=payload.get("shop_id"),
+                )
+                for npc_id, payload in npc_payload.items()
+            }
+
+        workbench_payload = world_payload.get("workbenches", {})
+        if workbench_payload:
+            self.world.workbenches = {
+                workbench_id: WorkbenchRuntime(
+                    workbench_id=payload["workbench_id"],
+                    definition_id=payload["definition_id"],
+                    coordinate=WorldCoordinate(**payload["coordinate"]),
+                    power_group_id=payload.get("power_group_id"),
+                )
+                for workbench_id, payload in workbench_payload.items()
+            }
 
     def _serialize_zombie_state(self, zombie_state: ZombieRuntimeState | None) -> dict | None:
         if zombie_state is None:
@@ -1275,7 +1346,6 @@ class AuthoritativeServerRuntime:
             "player.use_item": self._handle_use_item,
             "player.equip": self._handle_equip,
             "mission.accept": self._handle_mission_accept,
-            "mission.progress": self._handle_mission_progress,
             "crafting.start": self._handle_crafting,
             "gather.resource": self._handle_gather,
             "garden.action": self._handle_garden_action,
@@ -1314,6 +1384,8 @@ class AuthoritativeServerRuntime:
 
         player.human_state.position = position
         player.human_state.movement_state = str(payload.get("movement_state", "moving"))
+        if self._within_range(player.human_state.position, WorldCoordinate(x=10.0, y=0.0, z=10.0), max_distance=8.0):
+            self._progress_mission_objective(player.state.player_id, "mission_human_retrieve_item", "reach_building_a")
 
         stamina_cost = float(payload.get("stamina_cost", 1.0))
         player.human_state.stats.spend_stamina(max(0.0, stamina_cost))
@@ -1329,37 +1401,23 @@ class AuthoritativeServerRuntime:
         except ValueError:
             return False, "invalid_target_form"
 
-        cure_available = bool(payload.get("cure_available", False))
-
-        if player.state.form == PlayerForm.ZOMBIE and target_form == PlayerForm.HUMAN and not cure_available:
-            return False, "cure_required"
-
-        if not is_valid_form_transition(player.state.form, target_form, cure_available=cure_available):
+        if target_form != PlayerForm.HUMAN:
+            return False, "direct_transition_not_allowed"
+        if player.state.form == PlayerForm.HUMAN:
+            return False, "already_human"
+        if not self._is_cure_available(player):
+            return False, "cure_not_available"
+        if not is_valid_form_transition(player.state.form, PlayerForm.HUMAN, cure_available=True):
             return False, "invalid_form_transition"
-
-        infection_progress = player.state.infection_progress
-        zombie_sanity = player.state.zombie_sanity
-        if target_form == PlayerForm.INFECTED_HUMAN:
-            infection_progress = max(0.1, infection_progress)
-            zombie_sanity = None
-        elif target_form == PlayerForm.ZOMBIE:
-            infection_progress = 1.0
-            zombie_sanity = player.zombie_state.sanity.value if player.zombie_state else 50.0
-            if player.zombie_state is None:
-                player.zombie_state = ZombieRuntimeState()
-            self._refresh_zombie_sanity_state(player.zombie_state)
-        elif target_form == PlayerForm.HUMAN:
-            infection_progress = 0.0
-            zombie_sanity = None
-            if player.zombie_state is not None:
-                player.zombie_state.sleeping = False
 
         player.state = PlayerStateModel(
             player_id=player.state.player_id,
-            form=target_form,
-            infection_progress=infection_progress,
-            zombie_sanity=zombie_sanity,
+            form=PlayerForm.HUMAN,
+            infection_progress=0.0,
+            zombie_sanity=None,
         )
+        if player.zombie_state is not None:
+            player.zombie_state.sleeping = False
         return True, "ok"
 
     def _handle_zombie_feed(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
@@ -1406,11 +1464,7 @@ class AuthoritativeServerRuntime:
             return True, "ok"
 
         if action == "add":
-            definition = self._item_definition_for(item_id)
-            overflow = player.inventory.add_item(definition=definition, quantity=quantity)
-            if overflow > 0:
-                return False, "inventory_full"
-            return True, "ok"
+            return False, "inventory_add_not_allowed"
 
         return False, "unsupported_inventory_action"
 
@@ -1536,6 +1590,10 @@ class AuthoritativeServerRuntime:
             animal = self.world.animals.get(animal_id)
             if animal is None:
                 return False, "animal_not_found"
+            if not self._within_range(player.human_state.position, animal.coordinate, max_distance=4.0):
+                return False, "animal_out_of_range"
+            if animal.state.infection_state == InfectionState.INFECTED:
+                return False, "animal_already_infected"
             animal.state = AnimalStateModel(
                 animal_id=animal.state.animal_id,
                 species_id=animal.state.species_id,
@@ -1613,6 +1671,11 @@ class AuthoritativeServerRuntime:
             if self.workbench_definitions.get(wb.definition_id, WorkbenchDefinition(wb.definition_id, [], False)).power_required:
                 if not self._is_power_group_sufficient(wb.power_group_id or ""):
                     return False, "insufficient_power"
+            workbench_def = self.workbench_definitions.get(wb.definition_id, WorkbenchDefinition(wb.definition_id, [], False))
+            if workbench_def.supported_recipe_tags and not any(
+                tag in workbench_def.supported_recipe_tags for tag in recipe.recipe_tags
+            ):
+                return False, "workbench_recipe_tag_incompatible"
 
         for item_id, quantity in recipe.input_item_quantities.items():
             if not self._has_item(player.inventory, item_id, quantity):
@@ -1781,8 +1844,12 @@ class AuthoritativeServerRuntime:
         structure = self.world.structures.get(structure_id)
         if structure is None:
             return False, "structure_not_found"
+        if structure.state == "destroyed":
+            return False, "structure_already_destroyed"
         if not self._within_range(player.human_state.position, structure.coordinate, max_distance=5.0):
             return False, "structure_out_of_range"
+        if player.state.form != PlayerForm.ZOMBIE and structure.owner_player_id != player.state.player_id:
+            return False, "structure_permission_denied"
 
         structure.health = max(0.0, structure.health - max(0.0, damage))
         self.world.destruction_records.append(
@@ -1853,14 +1920,21 @@ class AuthoritativeServerRuntime:
     def _handle_economy_mutation(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
         action = payload.get("action")
         amount = int(payload.get("amount", 0))
-        if amount <= 0:
-            return False, "invalid_amount"
 
         if action == "earn":
-            player.currency_balance += amount
-            return True, "ok"
+            return False, "client_earn_not_allowed"
 
         if action == "spend":
+            if amount <= 0:
+                return False, "invalid_amount"
+            transaction_id = payload.get("transaction_id")
+            if not isinstance(transaction_id, str):
+                return False, "missing_transaction_id"
+            authorized_amount = self.economy_spend_transactions.get(transaction_id)
+            if authorized_amount is None:
+                return False, "unauthorized_transaction"
+            if amount != authorized_amount:
+                return False, "invalid_transaction_amount"
             if player.currency_balance < amount:
                 return False, "insufficient_currency"
             player.currency_balance -= amount
@@ -1923,9 +1997,24 @@ class AuthoritativeServerRuntime:
                 self.tier_definitions,
                 seed=seed,
             )
-            container.generated_items = [
-                ItemStack(item_id=str(item["item_id"]), quantity=int(item["quantity"])) for item in generated
-            ]
+            filtered_items: list[ItemStack] = []
+            for item in generated:
+                item_id = str(item["item_id"])
+                tier_id = str(item.get("tier_id", container.definition.container_tier_id))
+                tier = self.tier_definitions.get(tier_id)
+                if tier is None:
+                    continue
+                metadata = self.loot_item_metadata.get(item_id, {})
+                category = str(metadata.get("category", self._item_definition_for(item_id).category.value))
+                quality = str(metadata.get("quality_level", "common"))
+                if tier.eligible_categories and category not in tier.eligible_categories:
+                    continue
+                if tier.eligible_quality_levels and quality not in tier.eligible_quality_levels:
+                    continue
+                filtered_items.append(ItemStack(item_id=item_id, quantity=int(item["quantity"])))
+            if not filtered_items:
+                return False, "no_eligible_loot"
+            container.generated_items = filtered_items
 
         if container.looted:
             return False, "container_already_looted"
@@ -1941,6 +2030,8 @@ class AuthoritativeServerRuntime:
                 )
                 if overflow > 0:
                     return False, "inventory_full"
+            if stack.item_id == "water_bottle":
+                self._progress_mission_objective(player.state.player_id, "mission_human_retrieve_item", "retrieve_water_bottle")
 
         container.looted = True
         self._record_progression(player, xp_gain=8)
@@ -2114,17 +2205,21 @@ class AuthoritativeServerRuntime:
 
     def _resolve_attack_damage(self, attacker: AuthoritativePlayer, payload: dict) -> float:
         if attacker.state.form == PlayerForm.ZOMBIE:
-            return float(payload.get("damage", 12.0))
+            if attacker.zombie_state is None:
+                return 12.0
+            tier = self.zombie_tiers.get(attacker.zombie_state.tier_id)
+            multiplier = tier.feeding_efficiency if tier is not None else 1.0
+            return 12.0 * multiplier
 
         instance_id = attacker.equipment.equipped_weapon_instance_id
         if instance_id is None:
-            return float(payload.get("damage", 2.0))
+            return 2.0
         instance = attacker.equipment_instances.get(instance_id)
         if instance is None or not instance.usable:
             return 0.0
         definition = self.weapon_definitions.get(instance.item_id)
         if definition is None:
-            return float(payload.get("damage", 2.0))
+            return 2.0
 
         if not attacker.human_state.stats.spend_stamina(definition.stamina_cost):
             return 0.0
@@ -2159,15 +2254,52 @@ class AuthoritativeServerRuntime:
         state = self.mission_states.setdefault(player_id, {}).setdefault(mission_id, MissionRuntimeState())
         if not state.accepted:
             return
+        was_completed = state.completed
         state.completed_objective_ids.add(objective_id)
         state.completed = set(definition.objective_ids).issubset(state.completed_objective_ids)
+        if state.completed and not was_completed:
+            player = self.players.get(player_id)
+            if player is not None:
+                self._record_progression(player, xp_gain=30)
+                player.currency_balance += 15
 
     def _record_progression(self, player: AuthoritativePlayer, xp_gain: int) -> None:
-        player.human_state.stats.add_experience(xp_gain)
+        if xp_gain <= 0:
+            return
+        player.human_state.stats.experience += xp_gain
+        levels = sorted(
+            (
+                {"level": int(level["level"]), "xp_required": int(level["xp_required"])}
+                for level in self.progression_definition.levels
+                if "level" in level and "xp_required" in level
+            ),
+            key=lambda level: level["xp_required"],
+        )
+        if levels:
+            resolved_level = levels[0]["level"]
+            for level in levels:
+                if player.human_state.stats.experience >= level["xp_required"]:
+                    resolved_level = level["level"]
+            player.human_state.stats.level = max(player.human_state.stats.level, resolved_level)
+        else:
+            player.human_state.stats.add_experience(xp_gain)
         if player.state.form == PlayerForm.ZOMBIE and player.zombie_state is not None:
             for tier_id, threshold in sorted(self.progression_definition.zombie_tier_thresholds.items(), key=lambda x: x[1]):
                 if player.human_state.stats.level >= threshold:
                     player.zombie_state.tier_id = tier_id
+
+    def _is_cure_available(self, player: AuthoritativePlayer) -> bool:
+        if player.state.form not in {PlayerForm.INFECTED_HUMAN, PlayerForm.ZOMBIE}:
+            return False
+        if player.state.infection_progress > 0.0:
+            return False
+        if player.state.form == PlayerForm.ZOMBIE:
+            zombie = player.zombie_state
+            if zombie is None:
+                return False
+            band = resolve_zombie_sanity_band(zombie.sanity.value, self.zombie_sanity_bands)
+            return bool(band and band.cure_eligible)
+        return True
 
     def _has_item(self, inventory: Inventory, item_id: str, quantity: int) -> bool:
         available = sum(stack.quantity for stack in inventory.stacks if stack.item_id == item_id)
