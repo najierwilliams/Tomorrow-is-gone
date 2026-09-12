@@ -50,7 +50,8 @@ Implemented representative command topics:
 - `economy.mutate`
 - `power.source_toggle`
 - `mission.accept`
-- `mission.progress`
+
+Mission objective progression is server-event-driven and is not exposed as a direct client command topic.
 
 ## Data-Driven Systems
 `data/phase2_definitions.json` now drives:

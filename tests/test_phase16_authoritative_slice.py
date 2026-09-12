@@ -161,7 +161,7 @@ class Phase16AuthoritativeSliceTests(unittest.TestCase):
                     command_id="move_far",
                     player_id="player_a",
                     topic="player.move",
-                    payload={"target_x": 256.0, "target_y": 0.0, "target_z": 256.0},
+                    payload={"target_x": 64.0, "target_y": 0.0, "target_z": 0.0},
                 )
             )
             runtime.process_tick()
@@ -205,7 +205,7 @@ class Phase16AuthoritativeSliceTests(unittest.TestCase):
                     command_id="move",
                     player_id="player_a",
                     topic="player.move",
-                    payload={"target_x": 5.0, "target_y": 0.0, "target_z": 78.0},
+                    payload={"target_x": 5.0, "target_y": 0.0, "target_z": 63.0},
                 )
             )
             transport.submit_command_intent(
@@ -227,6 +227,7 @@ class Phase16AuthoritativeSliceTests(unittest.TestCase):
                 restored_runtime.players["player_a"].human_state.position.x,
                 5.0,
             )
+            self.assertEqual(restored_runtime.players["player_a"].human_state.position.z, 63.0)
             self.assertTrue(restored_runtime.world.containers["container_c"].looted)
             self.assertTrue(restored_runtime.world.containers["container_c"].generated_items)
 

@@ -417,6 +417,14 @@ class TieredLootGenerator(LootGenerationPort):
 
 
 class AuthoritativeServerRuntime:
+    MAX_MOVE_DISTANCE_PER_COMMAND = 64.0
+    STAMINA_COST_PER_METER = 0.1
+    MIN_MOVE_STAMINA_COST = 1.0
+    GARDEN_WATER_AMOUNT_PER_ACTION = 10.0
+    BASE_ZOMBIE_FEED_SANITY_GAIN = 12.0
+    BASE_ZOMBIE_FEED_HEALTH_GAIN = 6.0
+    BASE_ZOMBIE_FEED_HUNGER_RECOVERY = 30.0
+
     def __init__(
         self,
         repository: PersistentStateRepository,
@@ -1371,7 +1379,7 @@ class AuthoritativeServerRuntime:
 
     def _handle_move(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
         try:
-            position = WorldCoordinate(
+            requested_position = WorldCoordinate(
                 x=float(payload.get("target_x", player.human_state.position.x)),
                 y=float(payload.get("target_y", player.human_state.position.y)),
                 z=float(payload.get("target_z", player.human_state.position.z)),
@@ -1379,16 +1387,24 @@ class AuthoritativeServerRuntime:
         except (TypeError, ValueError):
             return False, "invalid_position_payload"
 
-        if not self.grid_config.supports_vertical_coordinate(position.y):
+        if not self.grid_config.supports_vertical_coordinate(requested_position.y):
             return False, "position_out_of_world_bounds"
 
-        player.human_state.position = position
-        player.human_state.movement_state = str(payload.get("movement_state", "moving"))
+        current_position = player.human_state.position
+        travel_distance = self._distance(current_position, requested_position)
+        if travel_distance <= 0.0:
+            return False, "movement_not_needed"
+        if travel_distance > self.MAX_MOVE_DISTANCE_PER_COMMAND:
+            return False, "movement_out_of_range"
+
+        stamina_cost = max(self.MIN_MOVE_STAMINA_COST, travel_distance * self.STAMINA_COST_PER_METER)
+        if not player.human_state.stats.spend_stamina(stamina_cost):
+            return False, "insufficient_stamina"
+
+        player.human_state.position = requested_position
+        player.human_state.movement_state = "moving"
         if self._within_range(player.human_state.position, WorldCoordinate(x=10.0, y=0.0, z=10.0), max_distance=8.0):
             self._progress_mission_objective(player.state.player_id, "mission_human_retrieve_item", "reach_building_a")
-
-        stamina_cost = float(payload.get("stamina_cost", 1.0))
-        player.human_state.stats.spend_stamina(max(0.0, stamina_cost))
         return True, "ok"
 
     def _handle_infect(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
@@ -1426,14 +1442,10 @@ class AuthoritativeServerRuntime:
         if player.zombie_state is None:
             player.zombie_state = ZombieRuntimeState()
 
-        sanity_gain = float(payload.get("sanity_gain", 12.0))
-        health_gain = float(payload.get("health_gain", 6.0))
-        hunger_recovery = float(payload.get("hunger_recovery", 30.0))
-
         player.zombie_state.feeding_state = "feeding"
-        player.zombie_state.hunger = max(0.0, player.zombie_state.hunger - max(0.0, hunger_recovery))
-        player.zombie_state.sanity.apply_delta(sanity_gain)
-        player.zombie_state.health = min(100.0, player.zombie_state.health + max(0.0, health_gain))
+        player.zombie_state.hunger = max(0.0, player.zombie_state.hunger - self.BASE_ZOMBIE_FEED_HUNGER_RECOVERY)
+        player.zombie_state.sanity.apply_delta(self.BASE_ZOMBIE_FEED_SANITY_GAIN)
+        player.zombie_state.health = min(100.0, player.zombie_state.health + self.BASE_ZOMBIE_FEED_HEALTH_GAIN)
         player.zombie_state.sleeping = False
         self._refresh_zombie_sanity_state(player.zombie_state)
 
@@ -1525,7 +1537,9 @@ class AuthoritativeServerRuntime:
             return False, "missing_item_id"
 
         if item_id in self.weapon_definitions:
-            instance = self._ensure_equipment_instance(player, item_id)
+            instance = self._resolve_owned_equipment_instance(player, item_id)
+            if instance is None:
+                return False, "item_not_owned"
             if not instance.usable:
                 return False, "item_unusable"
             player.equipment.equipped_weapon_instance_id = instance.instance_id
@@ -1533,7 +1547,9 @@ class AuthoritativeServerRuntime:
             return True, "ok"
 
         if item_id in self.armor_definitions:
-            instance = self._ensure_equipment_instance(player, item_id)
+            instance = self._resolve_owned_equipment_instance(player, item_id)
+            if instance is None:
+                return False, "item_not_owned"
             if not instance.usable:
                 return False, "item_unusable"
             player.equipment.equipped_armor_instance_id = instance.instance_id
@@ -1579,7 +1595,7 @@ class AuthoritativeServerRuntime:
             structure_id = payload.get("structure_id")
             if not isinstance(structure_id, str):
                 return False, "missing_structure_id"
-            return self._damage_structure(player, structure_id, float(payload.get("damage", 10.0)))
+            return self._damage_structure(player, structure_id)
 
         if action == "infect_animal":
             animal_id = payload.get("animal_id")
@@ -1625,30 +1641,6 @@ class AuthoritativeServerRuntime:
         state.accepted = True
         return True, "ok"
 
-    def _handle_mission_progress(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
-        mission_id = payload.get("mission_id")
-        objective_id = payload.get("objective_id")
-        if not isinstance(mission_id, str) or not isinstance(objective_id, str):
-            return False, "invalid_mission_progress_payload"
-
-        definition = self.mission_definitions.get(mission_id)
-        if definition is None:
-            return False, "mission_not_found"
-
-        state = self.mission_states.setdefault(player.state.player_id, {}).setdefault(mission_id, MissionRuntimeState())
-        if not state.accepted:
-            return False, "mission_not_accepted"
-        if objective_id not in definition.objective_ids:
-            return False, "objective_not_in_mission"
-
-        state.completed_objective_ids.add(objective_id)
-        was_completed = state.completed
-        state.completed = set(definition.objective_ids).issubset(state.completed_objective_ids)
-        if state.completed and not was_completed:
-            self._record_progression(player, xp_gain=30)
-            player.currency_balance += 15
-        return True, "ok"
-
     def _handle_crafting(self, player: AuthoritativePlayer, payload: dict) -> tuple[bool, str]:
         recipe_id = payload.get("recipe_id")
         workbench_id = payload.get("workbench_id")
@@ -1680,6 +1672,16 @@ class AuthoritativeServerRuntime:
         for item_id, quantity in recipe.input_item_quantities.items():
             if not self._has_item(player.inventory, item_id, quantity):
                 return False, "insufficient_resources"
+
+        simulated_inventory = self._copy_inventory(player.inventory)
+        for item_id, quantity in recipe.input_item_quantities.items():
+            simulated_inventory.remove_item(item_id, quantity)
+        for item_id, quantity in recipe.output_item_quantities.items():
+            if item_id in self.weapon_definitions or item_id in self.armor_definitions:
+                continue
+            overflow = simulated_inventory.add_item(self._item_definition_for(item_id), quantity)
+            if overflow > 0:
+                return False, "output_inventory_full"
 
         for item_id, quantity in recipe.input_item_quantities.items():
             player.inventory.remove_item(item_id, quantity)
@@ -1759,8 +1761,7 @@ class AuthoritativeServerRuntime:
             return True, "ok"
 
         if action == "water":
-            amount = float(payload.get("amount", 10.0))
-            plot.water = min(100.0, plot.water + max(0.0, amount))
+            plot.water = min(100.0, plot.water + self.GARDEN_WATER_AMOUNT_PER_ACTION)
             return True, "ok"
 
         if action == "harvest":
@@ -1837,10 +1838,9 @@ class AuthoritativeServerRuntime:
         structure_id = payload.get("structure_id")
         if not isinstance(structure_id, str):
             return False, "missing_structure_id"
-        damage = float(payload.get("damage", 10.0))
-        return self._damage_structure(player, structure_id, damage)
+        return self._damage_structure(player, structure_id)
 
-    def _damage_structure(self, player: AuthoritativePlayer, structure_id: str, damage: float) -> tuple[bool, str]:
+    def _damage_structure(self, player: AuthoritativePlayer, structure_id: str) -> tuple[bool, str]:
         structure = self.world.structures.get(structure_id)
         if structure is None:
             return False, "structure_not_found"
@@ -1851,9 +1851,13 @@ class AuthoritativeServerRuntime:
         if player.state.form != PlayerForm.ZOMBIE and structure.owner_player_id != player.state.player_id:
             return False, "structure_permission_denied"
 
-        structure.health = max(0.0, structure.health - max(0.0, damage))
+        damage = self._resolve_structure_damage(player)
+        if damage <= 0.0:
+            return False, "no_attack_capability"
+
+        structure.health = max(0.0, structure.health - damage)
         self.world.destruction_records.append(
-            DestructionRuntimeRecord(target_id=structure_id, source_actor_id=player.state.player_id, damage=max(0.0, damage))
+            DestructionRuntimeRecord(target_id=structure_id, source_actor_id=player.state.player_id, damage=damage)
         )
         if structure.health == 0.0:
             structure.state = "destroyed"
@@ -1870,12 +1874,11 @@ class AuthoritativeServerRuntime:
         if not self._within_range(player.human_state.position, animal.coordinate, max_distance=4.0):
             return False, "animal_out_of_range"
 
-        chance_bonus = float(payload.get("tame_bonus", 0.0))
         definition = self.animal_definitions.get(animal.state.species_id)
         if definition is None:
             return False, "animal_definition_not_found"
 
-        effective = max(0.0, min(1.0, chance_bonus + (0.55 if animal.state.infection_state == InfectionState.NORMAL else 0.45)))
+        effective = 0.55 if animal.state.infection_state == InfectionState.NORMAL else 0.45
         if effective < definition.tame_difficulty:
             return False, "tame_failed"
 
@@ -2073,10 +2076,12 @@ class AuthoritativeServerRuntime:
             weight=0.5,
         )
 
-    def _ensure_equipment_instance(self, player: AuthoritativePlayer, item_id: str) -> EquipmentInstance:
+    def _resolve_owned_equipment_instance(self, player: AuthoritativePlayer, item_id: str) -> EquipmentInstance | None:
         for instance in player.equipment_instances.values():
             if instance.item_id == item_id:
                 return instance
+        if not player.inventory.remove_item(item_id, 1):
+            return None
         return self._create_equipment_instance(player, item_id)
 
     def _create_equipment_instance(self, player: AuthoritativePlayer, item_id: str) -> EquipmentInstance:
@@ -2230,6 +2235,15 @@ class AuthoritativeServerRuntime:
         instance.durability = max(0.0, instance.durability - definition.durability_loss)
         return definition.damage
 
+    def _resolve_structure_damage(self, attacker: AuthoritativePlayer) -> float:
+        return max(0.0, self._resolve_attack_damage(attacker, {}))
+
+    def _copy_inventory(self, inventory: Inventory) -> Inventory:
+        return Inventory(
+            capacity_slots=inventory.capacity_slots,
+            stacks=[ItemStack(item_id=stack.item_id, quantity=stack.quantity) for stack in inventory.stacks],
+        )
+
     def _apply_armor_and_damage(self, target: AuthoritativePlayer, incoming_damage: float) -> float:
         damage = max(0.0, incoming_damage)
         armor_instance_id = target.equipment.equipped_armor_instance_id
@@ -2248,6 +2262,7 @@ class AuthoritativeServerRuntime:
         return damage
 
     def _progress_mission_objective(self, player_id: str, mission_id: str, objective_id: str) -> None:
+        # Server gameplay events only; never call from untrusted client command payloads.
         definition = self.mission_definitions.get(mission_id)
         if definition is None or objective_id not in definition.objective_ids:
             return

@@ -166,6 +166,8 @@ class Phase2CoreGameplayRuntimeTests(unittest.TestCase):
             attacker = runtime.players["a"]
             defender = runtime.players["b"]
             attacker.inventory.add_item(runtime._item_definition_for("ammo_9mm"), 10)
+            attacker.inventory.add_item(runtime._item_definition_for("pistol_9mm"), 1)
+            defender.inventory.add_item(runtime._item_definition_for("jacket_armor"), 1)
 
             transport.submit_command_intent(
                 ClientCommandIntent("equip_w", "a", "player.equip", {"item_id": "pistol_9mm"})
@@ -191,6 +193,118 @@ class Phase2CoreGameplayRuntimeTests(unittest.TestCase):
             armor_instance = defender.equipment_instances[defender.equipment.equipped_armor_instance_id]
             self.assertLess(weapon_instance.durability, weapon_instance.max_durability)
             self.assertLess(armor_instance.durability, armor_instance.max_durability)
+
+    def test_equipping_unowned_and_arbitrary_items_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, transport = build_runtime(Path(directory))
+            runtime.join_player("human", PlayerForm.HUMAN, WorldCoordinate(0.0, 0.0, 0.0))
+            player = runtime.players["human"]
+
+            intents = [
+                ClientCommandIntent("equip_weapon_unowned", "human", "player.equip", {"item_id": "pistol_9mm"}),
+                ClientCommandIntent("equip_armor_unowned", "human", "player.equip", {"item_id": "jacket_armor"}),
+                ClientCommandIntent("equip_nonexistent", "human", "player.equip", {"item_id": "not_real_item"}),
+                ClientCommandIntent("equip_arbitrary", "human", "player.equip", {"item_id": "admin_super_weapon"}),
+            ]
+            for intent in intents:
+                transport.submit_command_intent(intent)
+            runtime.process_tick()
+
+            self.assertFalse(runtime.command_results[0]["accepted"])
+            self.assertEqual(runtime.command_results[0]["reason"], "item_not_owned")
+            self.assertFalse(runtime.command_results[1]["accepted"])
+            self.assertEqual(runtime.command_results[1]["reason"], "item_not_owned")
+            self.assertFalse(runtime.command_results[2]["accepted"])
+            self.assertEqual(runtime.command_results[2]["reason"], "item_not_equippable")
+            self.assertFalse(runtime.command_results[3]["accepted"])
+            self.assertEqual(runtime.command_results[3]["reason"], "item_not_equippable")
+            self.assertEqual(player.equipment_instances, {})
+            self.assertIsNone(player.equipment.equipped_weapon_instance_id)
+            self.assertIsNone(player.equipment.equipped_armor_instance_id)
+
+    def test_equipping_owned_weapon_and_armor_from_inventory_works(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, transport = build_runtime(Path(directory))
+            runtime.join_player("human", PlayerForm.HUMAN, WorldCoordinate(0.0, 0.0, 0.0))
+            player = runtime.players["human"]
+            player.inventory.add_item(runtime._item_definition_for("pistol_9mm"), 1)
+            player.inventory.add_item(runtime._item_definition_for("jacket_armor"), 1)
+
+            transport.submit_command_intent(
+                ClientCommandIntent("equip_weapon", "human", "player.equip", {"item_id": "pistol_9mm"})
+            )
+            transport.submit_command_intent(
+                ClientCommandIntent("equip_armor", "human", "player.equip", {"item_id": "jacket_armor"})
+            )
+            runtime.process_tick()
+
+            self.assertTrue(runtime.command_results[0]["accepted"])
+            self.assertTrue(runtime.command_results[1]["accepted"])
+            self.assertIsNotNone(player.equipment.equipped_weapon_instance_id)
+            self.assertIsNotNone(player.equipment.equipped_armor_instance_id)
+            self.assertFalse(any(stack.item_id == "pistol_9mm" for stack in player.inventory.stacks))
+            self.assertFalse(any(stack.item_id == "jacket_armor" for stack in player.inventory.stacks))
+
+    def test_movement_stamina_and_position_are_server_authoritative(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, transport = build_runtime(Path(directory))
+            runtime.join_player("human", PlayerForm.HUMAN, WorldCoordinate(0.0, 0.0, 0.0))
+            player = runtime.players["human"]
+            player.human_state.stats.stamina = 20.0
+            starting_stamina = player.human_state.stats.stamina
+
+            transport.submit_command_intent(
+                ClientCommandIntent(
+                    "move_valid",
+                    "human",
+                    "player.move",
+                    {"target_x": 10.0, "target_y": 0.0, "target_z": 0.0, "stamina_cost": 0.0},
+                )
+            )
+            runtime.process_tick()
+
+            self.assertTrue(runtime.command_results[0]["accepted"])
+            self.assertEqual(player.human_state.position.x, 10.0)
+            self.assertEqual(player.human_state.stats.stamina, starting_stamina + 4.0)
+            self.assertNotEqual(player.human_state.stats.stamina, starting_stamina + 5.0)
+
+    def test_movement_rejects_negative_cost_forgery_and_invalid_distance(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, transport = build_runtime(Path(directory))
+            runtime.join_player("human", PlayerForm.HUMAN, WorldCoordinate(0.0, 0.0, 0.0))
+            player = runtime.players["human"]
+            player.human_state.stats.stamina = 20.0
+            start_stamina = player.human_state.stats.stamina
+
+            transport.submit_command_intent(
+                ClientCommandIntent(
+                    "move_negative_cost",
+                    "human",
+                    "player.move",
+                    {"target_x": 5.0, "target_y": 0.0, "target_z": 0.0, "stamina_cost": -100.0},
+                )
+            )
+            runtime.process_tick()
+            self.assertTrue(runtime.command_results[0]["accepted"])
+            self.assertEqual(player.human_state.position.x, 5.0)
+            self.assertEqual(player.human_state.stats.stamina, start_stamina + 4.0)
+
+            previous_position = player.human_state.position
+            previous_stamina = player.human_state.stats.stamina
+            transport.submit_command_intent(
+                ClientCommandIntent(
+                    "move_too_far",
+                    "human",
+                    "player.move",
+                    {"target_x": 500.0, "target_y": 0.0, "target_z": 0.0, "stamina_cost": 0.0},
+                )
+            )
+            runtime.process_tick()
+
+            self.assertFalse(runtime.command_results[0]["accepted"])
+            self.assertEqual(runtime.command_results[0]["reason"], "movement_out_of_range")
+            self.assertEqual(player.human_state.position, previous_position)
+            self.assertEqual(player.human_state.stats.stamina, previous_stamina + 5.0)
 
     def test_crafting_and_workbench_validation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -238,6 +352,47 @@ class Phase2CoreGameplayRuntimeTests(unittest.TestCase):
 
             self.assertFalse(runtime.command_results[0]["accepted"])
             self.assertEqual(runtime.command_results[0]["reason"], "workbench_recipe_tag_incompatible")
+
+    def test_crafting_insufficient_materials_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, transport = build_runtime(Path(directory))
+            runtime.join_player("human", PlayerForm.HUMAN, WorldCoordinate(4.0, 0.0, 4.0))
+
+            transport.submit_command_intent(
+                ClientCommandIntent(
+                    command_id="craft_missing",
+                    player_id="human",
+                    topic="crafting.start",
+                    payload={"recipe_id": "recipe_metal_plate", "workbench_id": "bench_general_a"},
+                )
+            )
+            runtime.process_tick()
+
+            self.assertFalse(runtime.command_results[0]["accepted"])
+            self.assertEqual(runtime.command_results[0]["reason"], "insufficient_resources")
+
+    def test_crafting_output_capacity_failure_preserves_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, transport = build_runtime(Path(directory))
+            runtime.join_player("human", PlayerForm.HUMAN, WorldCoordinate(4.0, 0.0, 4.0))
+            player = runtime.players["human"]
+            player.inventory.capacity_slots = 1
+            player.inventory.add_item(runtime._item_definition_for("scrap_metal"), 3)
+
+            transport.submit_command_intent(
+                ClientCommandIntent(
+                    command_id="craft_full_output",
+                    player_id="human",
+                    topic="crafting.start",
+                    payload={"recipe_id": "recipe_metal_plate", "workbench_id": "bench_general_a"},
+                )
+            )
+            runtime.process_tick()
+
+            self.assertFalse(runtime.command_results[0]["accepted"])
+            self.assertEqual(runtime.command_results[0]["reason"], "output_inventory_full")
+            scrap_stack = next(stack for stack in player.inventory.stacks if stack.item_id == "scrap_metal")
+            self.assertEqual(scrap_stack.quantity, 3)
 
     def test_resource_gathering_and_respawn(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -335,7 +490,7 @@ class Phase2CoreGameplayRuntimeTests(unittest.TestCase):
             runtime.process_tick()
 
             self.assertFalse(runtime.command_results[0]["accepted"])
-            self.assertEqual(runtime.world.structures["s1"].state, "destroyed")
+            self.assertLess(runtime.world.structures["s1"].health, runtime.world.structures["s1"].max_health)
 
     def test_unauthorized_human_cannot_destroy_other_players_structure(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -370,6 +525,82 @@ class Phase2CoreGameplayRuntimeTests(unittest.TestCase):
             self.assertFalse(runtime.command_results[0]["accepted"])
             self.assertEqual(runtime.command_results[0]["reason"], "structure_permission_denied")
             self.assertEqual(runtime.world.structures["s1"].health, starting_health)
+
+    def test_structure_damage_ignores_client_damage_injection(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, transport = build_runtime(Path(directory))
+            runtime.join_player("owner", PlayerForm.HUMAN, WorldCoordinate(8.0, 0.0, 8.0))
+            owner = runtime.players["owner"]
+            owner.inventory.add_item(runtime._item_definition_for("wood_log"), 2)
+            owner.inventory.add_item(runtime._item_definition_for("metal_plate"), 1)
+            owner.inventory.add_item(runtime._item_definition_for("pistol_9mm"), 1)
+            owner.inventory.add_item(runtime._item_definition_for("ammo_9mm"), 10)
+
+            transport.submit_command_intent(
+                ClientCommandIntent(
+                    "build",
+                    "owner",
+                    "structure.build",
+                    {"structure_id": "s1", "blueprint_id": "bp_wood_wall", "x": 8.0, "y": 0.0, "z": 8.5},
+                )
+            )
+            transport.submit_command_intent(
+                ClientCommandIntent("equip_weapon", "owner", "player.equip", {"item_id": "pistol_9mm"})
+            )
+            runtime.process_tick()
+            before_health = runtime.world.structures["s1"].health
+
+            transport.submit_command_intent(
+                ClientCommandIntent(
+                    "damage_inject",
+                    "owner",
+                    "structure.damage",
+                    {"structure_id": "s1", "damage": 999999.0},
+                )
+            )
+            runtime.process_tick()
+
+            self.assertTrue(runtime.command_results[0]["accepted"])
+            self.assertEqual(runtime.world.structures["s1"].health, before_health - runtime.weapon_definitions["pistol_9mm"].damage)
+            self.assertNotEqual(runtime.world.destruction_records[-1].damage, 999999.0)
+
+    def test_structure_attack_via_interact_ignores_client_damage_injection(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, transport = build_runtime(Path(directory))
+            runtime.join_player("owner", PlayerForm.HUMAN, WorldCoordinate(8.0, 0.0, 8.0))
+            owner = runtime.players["owner"]
+            owner.inventory.add_item(runtime._item_definition_for("wood_log"), 2)
+            owner.inventory.add_item(runtime._item_definition_for("metal_plate"), 1)
+            owner.inventory.add_item(runtime._item_definition_for("pistol_9mm"), 1)
+            owner.inventory.add_item(runtime._item_definition_for("ammo_9mm"), 10)
+
+            transport.submit_command_intent(
+                ClientCommandIntent(
+                    "build",
+                    "owner",
+                    "structure.build",
+                    {"structure_id": "s1", "blueprint_id": "bp_wood_wall", "x": 8.0, "y": 0.0, "z": 8.5},
+                )
+            )
+            transport.submit_command_intent(
+                ClientCommandIntent("equip_weapon", "owner", "player.equip", {"item_id": "pistol_9mm"})
+            )
+            runtime.process_tick()
+            before_health = runtime.world.structures["s1"].health
+
+            transport.submit_command_intent(
+                ClientCommandIntent(
+                    "attack_structure_inject",
+                    "owner",
+                    "player.interact",
+                    {"action": "attack_structure", "structure_id": "s1", "damage": 500000.0},
+                )
+            )
+            runtime.process_tick()
+
+            self.assertTrue(runtime.command_results[0]["accepted"])
+            self.assertEqual(runtime.world.structures["s1"].health, before_health - runtime.weapon_definitions["pistol_9mm"].damage)
+            self.assertNotEqual(runtime.world.destruction_records[-1].damage, 500000.0)
 
     def test_power_foundation_updates_device_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
