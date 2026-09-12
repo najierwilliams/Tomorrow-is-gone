@@ -1,0 +1,5 @@
+MockAuthoritativeRuntimeClient mirrors contract intent:
+- Unity consumes authoritative snapshots.
+- Unity submits client command intents.
+- Combat and state changes are modeled as authoritative responses.
+This local mock is for integration validation only and does not replace server/core authority.
